@@ -12,7 +12,7 @@ index f8ded31..0c672b7 100755
  
  	bld.stlib(
 diff --git a/dedicated/console/TextConsoleUnix.cpp b/dedicated/console/TextConsoleUnix.cpp
-index 108d38b..91ddeed 100644
+index 108d38b..7529780 100644
 --- a/dedicated/console/TextConsoleUnix.cpp
 +++ b/dedicated/console/TextConsoleUnix.cpp
 @@ -17,7 +17,9 @@
@@ -98,11 +98,111 @@ index 108d38b..91ddeed 100644
  
  		if ( pthread_create( &g_threadid, NULL, terminal_threadproc, (void *)m_tty ) != 0 )
  		{
+@@ -316,9 +325,13 @@ bool CTextConsoleUnix::Init()
+ 	}
+ 	else
+ 	{
++#ifdef SOURCE_IOS_DEDICATED
++		m_tty = stdout;
++#else
+ 		m_tty = fopen( "/dev/null", "w+" );
+ 		if ( !m_tty )
+ 			m_tty = stdout;
++#endif
+ 	}
+ 
+ 	m_bConDebug = CommandLine()->FindParm( "-condebug" ) != 0;
+diff --git a/dedicated/sys_ded.cpp b/dedicated/sys_ded.cpp
+index 50f9f24..907046d 100644
+--- a/dedicated/sys_ded.cpp
++++ b/dedicated/sys_ded.cpp
+@@ -406,7 +406,9 @@ void UTIL_ComputeBaseDir( char *pBaseDir, int nMaxLen )
+ 		strcpy( pBaseDir, pOverrideDir );
+ 	}
+ 
++#ifndef SOURCE_IOS_DEDICATED
+ 	Q_strlower( pBaseDir );
++#endif
+ 	Q_FixSlashes( pBaseDir );
+ }
+ 
+@@ -516,7 +518,11 @@ int main(int argc, char **argv)
+ 	// and make that be the current working directory
+ 	char pBasedir[ MAX_PATH ];
+ 	UTIL_ComputeBaseDir( pBasedir, MAX_PATH );
+-	_chdir( pBasedir );
++	if ( _chdir( pBasedir ) != 0 )
++	{
++		Warning( "Cannot enter Source base directory: %s\n", pBasedir );
++		return -1;
++	}
+ 
+ 	// Rehook the command line through VCR mode.
+ 	CommandLine()->CreateCmdLine( VCRHook_GetCommandLine() );
+diff --git a/dedicated_main/main.cpp b/dedicated_main/main.cpp
+index 418c857..fc7771e 100644
+--- a/dedicated_main/main.cpp
++++ b/dedicated_main/main.cpp
+@@ -188,6 +188,10 @@ static void WaitForDebuggerConnect( int argc, char *argv[], int time )
+ 
+ int main( int argc, char *argv[] )
+ {
++#ifdef SOURCE_IOS_DEDICATED
++	const char *pBinaryName = "@executable_path/bin/libdedicated" DLL_EXT_STRING;
++	void *dedicated = dlopen( pBinaryName, RTLD_NOW );
++#else
+ 	// Must add 'bin' to the path....
+ 	char* pPath = getenv("LD_LIBRARY_PATH");
+ 	char szBuffer[4096];
+@@ -211,6 +215,7 @@ int main( int argc, char *argv[] )
+ 	void *dedicated = dlopen( pBinaryName, RTLD_NOW );
+ 	if ( !dedicated )
+ 		dedicated = dlopen( "bin/libdedicated" DLL_EXT_STRING, RTLD_NOW );
++#endif
+ 
+ 	if ( !dedicated )
+ 	{
+@@ -226,9 +231,12 @@ int main( int argc, char *argv[] )
+ 
+ 	WaitForDebuggerConnect( argc, argv, 30 );
+ 
+-	ret = dedicated_main( argc,argv );
++	int result = dedicated_main( argc, argv );
+ 	dlclose( dedicated );
++#ifndef SOURCE_IOS_DEDICATED
+ 	dlclose( vstdlib );
+ 	dlclose( tier0 );
++#endif
++	return result;
+ }
+ #endif
 diff --git a/wscript b/wscript
-index 16f2263..bbab468 100644
+index 16f2263..cfca086 100644
 --- a/wscript
 +++ b/wscript
-@@ -291,6 +291,9 @@ def options(opt):
+@@ -4,6 +4,7 @@
+ 
+ from __future__ import print_function
+ from waflib import Logs, Context, Configure
++from waflib.TaskGen import feature, after_method
+ import sys
+ import os
+ 
+@@ -11,6 +12,13 @@ VERSION = '1.0'
+ APPNAME = 'source-engine'
+ top = '.'
+ 
++@feature('cshlib', 'cxxshlib')
++@after_method('apply_link', 'propagate_uselib_vars')
++def ios_install_name(taskgen):
++	if taskgen.env.IOS_DEDICATED:
++		name = taskgen.link_task.outputs[0].name
++		taskgen.env.append_value('LINKFLAGS', '-Wl,-install_name,@rpath/' + name)
++
+ FT2_CHECK='''extern "C" {
+ #include <ft2build.h>
+ #include FT_FREETYPE_H
+@@ -291,6 +299,9 @@ def options(opt):
  	grp.add_option('-d', '--dedicated', action = 'store_true', dest = 'DEDICATED', default = False,
  		help = 'build dedicated server [default: %default]')
  
@@ -112,7 +212,7 @@ index 16f2263..bbab468 100644
  	grp.add_option('--tests', action = 'store_true', dest = 'TESTS', default = False,
  		help = 'build unit tests [default: %default]')
  
-@@ -383,6 +386,10 @@ def check_deps(conf):
+@@ -383,6 +394,10 @@ def check_deps(conf):
  	if conf.options.TESTS:
  		return
  
@@ -123,7 +223,7 @@ index 16f2263..bbab468 100644
  	if conf.env.DEST_OS != 'android':
  		if conf.env.DEST_OS != 'win32':
  			if conf.options.SDL:
-@@ -447,6 +454,19 @@ def configure(conf):
+@@ -447,6 +462,21 @@ def configure(conf):
  	if sys.platform == 'win32':
  		conf.load('msvc_pdb_ext msdev msvs msvcdeps')
  	conf.load('subproject xcompile compiler_c compiler_cxx gccdeps gitversion clang_compilation_database strip_on_install_v2 waf_unit_test enforce_pic')
@@ -139,7 +239,9 @@ index 16f2263..bbab468 100644
 +			int main() { return 0; }
 +		''', msg='Checking iOS arm64 target')
 +		conf.env.append_unique('DEFINES', 'SOURCE_IOS_DEDICATED=1')
++		conf.env.append_value('CXXFLAGS', ['-include', 'alloca.h'])
 +		conf.env.append_unique('LINKFLAGS', '-Wl,-rpath,@loader_path')
++		conf.env.append_unique('LINKFLAGS', '-Wl,-rpath,@executable_path/bin')
  	if conf.env.DEST_OS == 'win32' and conf.env.DEST_CPU == 'amd64':
  		conf.load('masm')
  	elif conf.env.DEST_OS == 'darwin':

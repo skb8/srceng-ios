@@ -26,4 +26,4 @@ if ! python3 waf configure -T release --dedicated --ios-dedicated --build-games 
   tail -n 70 "$output/objects/config.log" >&2
   exit 1
 fi
-python3 waf install -j "$(sysctl -n hw.logicalcpu)"
+python3 waf install --keep -j "$(sysctl -n hw.logicalcpu)"
