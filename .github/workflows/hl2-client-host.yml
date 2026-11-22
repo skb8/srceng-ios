@@ -1,0 +1,57 @@
+name: Half-Life 2 client host
+
+on:
+  push:
+    paths:
+      - ".github/workflows/hl2-client-host.yml"
+      - "Engine/Upstream/ports/**"
+      - "Engine/Upstream/revision"
+      - "Engine/Upstream/patches/**"
+      - "scripts/build-hl2-client-host.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/hl2-client-host.yml"
+      - "Engine/Upstream/ports/**"
+      - "Engine/Upstream/revision"
+      - "Engine/Upstream/patches/**"
+      - "scripts/build-hl2-client-host.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hl2-client-host-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client-host:
+    runs-on: macos-26
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [iphonesimulator, iphoneos]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Fetch the pinned Source and SDL revisions
+        run: |
+          revision="$(cat Engine/Upstream/revision)"
+          git init build/upstream
+          git -C build/upstream fetch --depth 1 https://github.com/nillerusr/source-engine.git "$revision"
+          git -C build/upstream checkout --detach FETCH_HEAD
+          git -C build/upstream submodule update --init --depth 1 thirdparty ivp
+          git init build/sdl
+          git -C build/sdl fetch --depth 1 https://github.com/libsdl-org/SDL.git 5d249570393f7a37e037abf22cd6012a4cc56a71
+          git -C build/sdl checkout --detach FETCH_HEAD
+      - name: Apply the iOS ports
+        run: |
+          git -C build/upstream apply "$PWD/Engine/Upstream/patches/ios-dedicated.patch"
+          git -C build/upstream apply "$PWD/Engine/Upstream/patches/vpk-embedded-offset.patch"
+          git -C build/upstream apply "$PWD/Engine/Upstream/ports/ios-client-host.patch"
+      - name: Compile and link the Source client host
+        run: |
+          bash scripts/build-hl2-client-host.sh build/upstream build/sdl build/client-host '${{ matrix.sdk }}'
+          xcrun lipo build/client-host/runtime/bin/libengine.dylib -verify_arch arm64

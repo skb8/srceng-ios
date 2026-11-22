@@ -1,0 +1,244 @@
+--- a/appframework/wscript
++++ b/appframework/wscript
+@@ -20,7 +20,7 @@
+ 		'../public/filesystem_init.cpp',
+ 	]
+ 
+-	if bld.env.SDL:
++	if bld.env.SDL and not bld.env.IOS_CLIENT_HOST:
+ 		source += [
+ 			'sdlmgr.cpp'
+ 		]
+@@ -50,7 +50,7 @@
+ 
+ 	libs = []
+ 
+-	if bld.env.DEST_OS == 'darwin' and not bld.env.IOS_DEDICATED:
++	if bld.env.DEST_OS == 'darwin' and not (bld.env.IOS_DEDICATED or bld.env.IOS_CLIENT_HOST):
+ 		libs += ['FOUNDATION', 'APPKIT', 'IOKIT']
+ 
+ 	bld.stlib(
+--- a/engine/audio/snd_win.cpp
++++ b/engine/audio/snd_win.cpp
+@@ -9,7 +9,7 @@
+ #if defined( USE_SDL )
+ #include "snd_dev_sdl.h"
+ #endif
+-#ifdef OSX
++#if defined( OSX ) && !defined( SOURCE_IOS_CLIENT_HOST )
+ #include "snd_dev_openal.h"
+ #include "snd_dev_mac_audioqueue.h"
+ 
+@@ -93,7 +93,7 @@
+ 		{
+ 			pDevice = Audio_CreateWaveDevice();
+ 		}
+-#elif defined(OSX)
++#elif defined( OSX ) && !defined( SOURCE_IOS_CLIENT_HOST )
+ 		if ( !CommandLine()->CheckParm( "-snd_openal" ) )
+ 		{
+ 			DevMsg( "Using AudioQueue Interface\n" );
+--- a/engine/audio/voice.cpp
++++ b/engine/audio/voice.cpp
+@@ -643,7 +643,7 @@
+ 		return false;
+ 
+ 	// Get the voice input device.
+-#ifdef OSX
++#if defined( OSX ) && !defined( SOURCE_IOS_CLIENT_HOST )
+ 	g_pVoiceRecord = CreateVoiceRecord_AudioQueue( Voice_SamplesPerSec() );
+ 	if ( !g_pVoiceRecord )
+ 	{
+--- a/engine/sys_dll.cpp
++++ b/engine/sys_dll.cpp
+@@ -10,7 +10,7 @@
+ #if defined(_WIN32) && !defined(_X360)
+ #include "winlite.h"
+ #elif defined(OSX)
+-#if !defined( SOURCE_IOS_DEDICATED )
++#if !defined( SOURCE_IOS_DEDICATED ) && !defined( SOURCE_IOS_CLIENT_HOST )
+ #include <Carbon/Carbon.h>
+ #endif
+ #include <sys/types.h>
+--- a/engine/sys_mainwind.cpp
++++ b/engine/sys_mainwind.cpp
+@@ -8,7 +8,7 @@
+ #include "SDL.h"
+ #include "SDL_syswm.h"
+ 
+-#if defined( OSX )
++#if defined( OSX ) && !defined( SOURCE_IOS_CLIENT_HOST )
+ #define DONT_DEFINE_BOOL
+ #include <objc/message.h>
+ #endif
+@@ -1568,7 +1568,9 @@
+ 		return NULL;
+ 	}
+ 
+-#ifdef OSX
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	return pInfo.subsystem == SDL_SYSWM_UIKIT ? pInfo.info.uikit.window : NULL;
++#elif defined( OSX )
+ 	id nsWindow = (id)pInfo.info.cocoa.window;
+ 	SEL selector = sel_registerName("windowRef");
+ 	id windowRef = ((id(*)(id, SEL))objc_msgSend)( nsWindow, selector );
+--- a/engine/wscript
++++ b/engine/wscript
+@@ -14,6 +14,8 @@
+ def configure(conf):
+ 	if conf.options.DEDICATED:
+ 		conf.define('SWDS', 1)
++		conf.define('NO_STEAM', 1)
++	elif conf.env.IOS_CLIENT_HOST:
+ 		conf.define('NO_STEAM', 1)
+ 	else:
+ 		if conf.env.DEST_OS == 'darwin':
+@@ -210,7 +212,7 @@
+ 		source += [
+ 			'audio/voice_record_sdl.cpp' #[$OSXALL||$LINUXALL]
+ 		]
+-		if bld.env.DEST_OS != "darwin":
++		if bld.env.DEST_OS != "darwin" or bld.env.IOS_CLIENT_HOST:
+ 			source += ['audio/snd_dev_sdl.cpp']
+ 
+ 	source_win = [
+@@ -228,7 +230,10 @@
+ 	if bld.env.DEDICATED:
+ 		source += ['cl_null.cpp', 'sys_stubwind.cpp']
+ 	else:
+-		source += source_win if bld.env.DEST_OS == 'win32' else ['sys_stubwind.cpp']
++		if bld.env.DEST_OS == 'win32':
++			source += source_win
++		elif not bld.env.IOS_CLIENT_HOST:
++			source += ['sys_stubwind.cpp']
+ 
+ 		source += [
+ 			'client_pch.cpp',
+@@ -332,12 +337,12 @@
+ 			'toolframework.cpp',
+ 		]
+ 		
+-		if bld.env.DEST_OS != 'win32':
++		if bld.env.DEST_OS != 'win32' and not bld.env.IOS_CLIENT_HOST:
+ 			source += [	
+ 				'audio/voice_mixer_controls_openal.cpp', #[$OSXALL||$LINUXALL]
+ 				'audio/voice_record_openal.cpp' #[$OSXALL||$LINUXALL]
+ 			]
+-		if bld.env.DEST_OS == 'darwin':
++		if bld.env.DEST_OS == 'darwin' and not bld.env.IOS_CLIENT_HOST:
+ 			source += [
+ 				'audio/snd_dev_openal.cpp', # [$OSXALL]
+ 				'audio/snd_dev_mac_audioqueue.cpp',#	[$OSXALL]
+@@ -363,7 +368,7 @@
+ 		libs += ['SSL', 'CRYPTO'] # android curl was built with openssl
+ 	elif bld.env.DEST_OS == 'win32':
+ 		libs += ['USER32', 'WINMM', 'WININET', 'DSOUND', 'DXGUID', 'GDI32', 'bzip2']
+-	elif bld.env.DEST_OS == 'darwin' and not bld.env.DEDICATED:
++	elif bld.env.DEST_OS == 'darwin' and not (bld.env.DEDICATED or bld.env.IOS_CLIENT_HOST):
+ 		libs += ['APPKIT', 'COREAUDIO', 'AUDIOTOOLBOX', 'SYSTEMCONFIGURATION']
+ 		
+ 	install_path = bld.env.LIBDIR
+--- a/vgui2/vgui_controls/FileOpenDialog.cpp
++++ b/vgui2/vgui_controls/FileOpenDialog.cpp
+@@ -862,7 +862,7 @@
+ 	GetCurrentDirectory( pCurrentDirectory, sizeof(pCurrentDirectory) );
+ #if !defined( _X360 ) && defined( WIN32 )
+ 	ShellExecute( NULL, NULL, pCurrentDirectory, NULL, NULL, SW_SHOWNORMAL );
+-#elif defined( OSX ) && !defined( SOURCE_IOS_DEDICATED )
++#elif defined( OSX ) && !defined( SOURCE_IOS_DEDICATED ) && !defined( SOURCE_IOS_CLIENT_HOST )
+ 	char szCmd[ MAX_PATH * 2];
+ 	Q_snprintf( szCmd, sizeof(szCmd), "/usr/bin/open \"%s\"", pCurrentDirectory );
+ 	::system( szCmd );
+--- a/wscript
++++ b/wscript
+@@ -15,7 +15,7 @@
+ @feature('cshlib', 'cxxshlib')
+ @after_method('apply_link', 'propagate_uselib_vars')
+ def ios_install_name(taskgen):
+-	if taskgen.env.IOS_DEDICATED:
++	if taskgen.env.IOS_DEDICATED or taskgen.env.IOS_CLIENT_HOST:
+ 		name = taskgen.link_task.outputs[0].name
+ 		taskgen.env.append_value('LINKFLAGS', '-Wl,-install_name,@rpath/' + name)
+ 
+@@ -159,6 +159,10 @@
+ 
+ ios_client_projects = ['vgui2/matsys_controls', 'game/client']
+ 
++ios_host_projects = [
++	name for name in projects['dedicated'] if name not in ('dedicated', 'dedicated_main')
++] + ios_client_projects + ['datamodel', 'filesystem', 'inputsystem', 'engine/voice_codecs/minimp3']
++
+ @Configure.conf
+ def check_pkg(conf, package, uselib_store, fragment, *k, **kw):
+ 	errormsg = '{0} not available! Install {0} development package. Also you may need to set PKG_CONFIG_PATH environment variable'.format(package)
+@@ -307,6 +311,9 @@
+ 	grp.add_option('--ios-hl2-client', action = 'store_true', dest = 'IOS_HL2_CLIENT', default = False,
+ 		help = 'also build the HL2 client game module with --ios-dedicated')
+ 
++	grp.add_option('--ios-client-host', action = 'store_true', dest = 'IOS_CLIENT_HOST', default = False,
++		help = 'build the Source client host for an iOS SDK with SDL2')
++
+ 	grp.add_option('--tests', action = 'store_true', dest = 'TESTS', default = False,
+ 		help = 'build unit tests [default: %default]')
+ 
+@@ -399,8 +406,10 @@
+ 	if conf.options.TESTS:
+ 		return
+ 
+-	if conf.env.IOS_DEDICATED:
++	if conf.env.IOS_DEDICATED or conf.env.IOS_CLIENT_HOST:
+ 		conf.check_cc(lib='z', uselib_store='ZLIB', define_name='HAVE_ZLIB')
++		if conf.env.IOS_CLIENT_HOST:
++			conf.check_cfg(package='sdl2', uselib_store='SDL2', args=['--cflags', '--libs'])
+ 		return
+ 
+ 	if conf.env.DEST_OS != 'android':
+@@ -469,11 +478,17 @@
+ 	conf.load('subproject xcompile compiler_c compiler_cxx gccdeps gitversion clang_compilation_database strip_on_install_v2 waf_unit_test enforce_pic')
+ 	conf.env.IOS_DEDICATED = conf.options.IOS_DEDICATED
+ 	conf.env.IOS_HL2_CLIENT = conf.options.IOS_HL2_CLIENT
++	conf.env.IOS_CLIENT_HOST = conf.options.IOS_CLIENT_HOST
+ 	if conf.env.IOS_HL2_CLIENT and not conf.env.IOS_DEDICATED:
+ 		conf.fatal('--ios-hl2-client requires --ios-dedicated')
+-	if conf.env.IOS_DEDICATED:
+-		if not conf.options.DEDICATED or conf.options.TESTS or conf.env.DEST_OS != 'darwin':
+-			conf.fatal('--ios-dedicated requires --dedicated and an iOS Apple Clang target')
++	if conf.env.IOS_DEDICATED or conf.env.IOS_CLIENT_HOST:
++		if conf.options.DEDICATED != conf.env.IOS_DEDICATED or conf.options.TESTS or conf.env.DEST_OS != 'darwin':
++			conf.fatal('Choose --dedicated --ios-dedicated or --ios-client-host with an iOS Apple Clang target')
++		if conf.env.IOS_CLIENT_HOST:
++			if conf.env.IOS_DEDICATED or conf.options.TOGLES:
++				conf.fatal('--ios-client-host requires the iOS window backend')
++			conf.options.SDL = True
++			conf.options.GL = False
+ 		conf.check_cxx(fragment='''
+ 			#include <TargetConditionals.h>
+ 			#if !TARGET_OS_IOS || !defined(__aarch64__)
+@@ -481,7 +496,8 @@
+ 			#endif
+ 			int main() { return 0; }
+ 		''', msg='Checking iOS arm64 target')
+-		conf.env.append_unique('DEFINES', 'SOURCE_IOS_DEDICATED=1')
++		platform_define = 'SOURCE_IOS_DEDICATED=1' if conf.env.IOS_DEDICATED else 'SOURCE_IOS_CLIENT_HOST=1'
++		conf.env.append_unique('DEFINES', platform_define)
+ 		conf.env.append_value('CXXFLAGS', ['-include', 'alloca.h'])
+ 		conf.env.append_unique('LINKFLAGS', '-Wl,-rpath,@loader_path')
+ 		conf.env.append_unique('LINKFLAGS', '-Wl,-rpath,@executable_path/bin')
+@@ -659,6 +675,8 @@
+ 		conf.add_subproject(projects['tests'])
+ 	elif conf.options.DEDICATED:
+ 		conf.add_subproject(projects['dedicated'] + (ios_client_projects if conf.env.IOS_HL2_CLIENT else []))
++	elif conf.env.IOS_CLIENT_HOST:
++		conf.add_subproject(ios_host_projects)
+ 	else:
+ 		conf.add_subproject(projects['game'])
+ 
+@@ -681,6 +699,8 @@
+ 		bld.add_subproject(projects['tests'])
+ 	elif bld.env.DEDICATED:
+ 		bld.add_subproject(projects['dedicated'] + (ios_client_projects if bld.env.IOS_HL2_CLIENT else []))
++	elif bld.env.IOS_CLIENT_HOST:
++		bld.add_subproject(ios_host_projects)
+ 	else:
+ 		if bld.env.TOGLES:
+ 			projects['game'] += ['togles']
