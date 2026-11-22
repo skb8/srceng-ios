@@ -1,0 +1,75 @@
+name: Source DX9 shader conversion
+
+on:
+  push:
+    paths:
+      - ".github/workflows/legacy-shaders.yml"
+      - "Engine/Upstream/LegacyShaders/**"
+      - "scripts/*-legacy-shader*"
+      - "scripts/make-shader-fixture.py"
+  pull_request:
+    paths:
+      - ".github/workflows/legacy-shaders.yml"
+      - "Engine/Upstream/LegacyShaders/**"
+      - "scripts/*-legacy-shader*"
+      - "scripts/make-shader-fixture.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  convert:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build pinned MojoShader translation tool
+        run: |
+          revision="$(cat Engine/Upstream/LegacyShaders/mojoshader-revision)"
+          git init build/mojoshader
+          git -C build/mojoshader fetch --depth 1 https://github.com/icculus/mojoshader.git "$revision"
+          git -C build/mojoshader checkout --detach FETCH_HEAD
+          scripts/build-legacy-shader-tool.sh build/mojoshader build/legacy-shaders
+      - name: Translate DX9 shader variants from VCS into MSL
+        run: |
+          work=build/legacy-shaders
+          python3 scripts/make-shader-fixture.py build/mojoshader/tests/2.vsa "$work/test_vs.vcs"
+          python3 - "$work/pixel.bin" <<'PY'
+          import struct
+          import sys
+          from pathlib import Path
+
+          # ps_2_0: def c0, 1, .5, .25, 1; mov oC0, c0
+          tokens = (
+              0xffff0200, 0x05000051, 0xa00f0000, 0x3f800000, 0x3f000000,
+              0x3e800000, 0x3f800000, 0x02000001, 0x800f0800, 0xa0e40000, 0xffff,
+          )
+          Path(sys.argv[1]).write_bytes(struct.pack("<11I", *tokens))
+          PY
+          python3 scripts/make-shader-fixture.py "$work/pixel.bin" "$work/test_ps.vcs"
+          scripts/convert-legacy-shaders.py "$work/d3d9-to-msl" "$work/msl" "$work/test_vs.vcs" "$work/test_ps.vcs"
+          python3 - "$work/msl" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          for directory, stage in (("test_vs", "vertex"), ("test_ps", "fragment")):
+              manifest = json.loads((Path(sys.argv[1]) / directory / "manifest.json").read_text())
+              assert len(manifest["variants"]) == 3
+              assert all(variant["stage"] == stage for variant in manifest["variants"])
+              assert manifest["static_aliases"] == {"3": 0}
+          PY
+      - name: Compile converted shaders with the iOS Metal toolchain
+        run: |
+          xcrun --sdk iphoneos metal --version || xcodebuild -downloadComponent metalToolchain
+          objects=()
+          for shader in build/legacy-shaders/msl/*/*.metal; do
+            air="${shader%.metal}.air"
+            xcrun --sdk iphoneos metal -mios-version-min=17.0 -c "$shader" -o "$air"
+            objects+=("$air")
+          done
+          xcrun --sdk iphoneos metallib "${objects[@]}" -o build/legacy-shaders/source-variants.metallib
+          test -s build/legacy-shaders/source-variants.metallib

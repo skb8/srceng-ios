@@ -2,6 +2,18 @@
 
 Приложение для порта [nillerusr/source-engine](https://github.com/nillerusr/source-engine) на iPhone и iPad. Первая цель — Half-Life 2. Сейчас приложение импортирует пользовательскую папку игры, выводит тестовый материал через Metal и собирает экранный ввод. Для кнопки «Запустить HL2» требуется нативная сборка движка с адаптером из этого репозитория. Такой сборки пока нет.
 
+## Скриншоты
+
+Лаунчер на iPhone 17 в iOS Simulator.
+
+![Лаунчер Source iOS с импортом файлов игры](docs/screenshots/launcher.png)
+
+Экранное управление в Metal-демо.
+
+![Metal-демо с экранным стиком и кнопками управления](docs/screenshots/touch-controls.png)
+
+[Запуск Actions, в котором сняты скриншоты](https://github.com/skb8/srceng-ios/actions/runs/45040935998)
+
 ## Сборка
 
 На macOS с Xcode и установленным iOS SDK:
@@ -25,11 +37,11 @@ scripts/build-ios.sh iphonesimulator
 
 ## Подключение движка
 
-Отдельный [workflow Source Engine arm64 libraries](https://github.com/skb8/srceng-ios/actions/workflows/engine.yml) компилирует оригинальные `tier0` и `mathlib` для iOS arm64 в статические библиотеки. Ревизия `master` закреплена в [`Engine/Upstream/revision`](Engine/Upstream/revision). На этом этапе библиотеки не входят в приложение.
+[Workflow Source Engine arm64 libraries](https://github.com/skb8/srceng-ios/actions/workflows/engine.yml) собирает оригинальные `tier0`, `tier1`, `tier2`, `mathlib`, `vstdlib`, `appframework`, `filesystem_stdio` и `vpklib` для устройства и симулятора. Проверочный исполняемый файл подключает штатный `IFileSystem`, монтирует поисковые пути из `gameinfo.txt` и читает тестовый файл из VPK. Патч учитывает длину заголовка при чтении данных, встроенных в VPK v1 и v2. Ревизия движка закреплена в [`Engine/Upstream/revision`](Engine/Upstream/revision). Пока эти библиотеки собираются отдельно от лаунчера.
 
 Ветка [`ios` форка](https://github.com/nillerusr/source-engine/tree/79c3bc86bdc61b75d402514ee2f372753d1732bf) содержит изменения для Apple-платформ. В Waf эта ревизия использует профиль Darwin с AppKit, Carbon и OpenGL. В исходных путях рендера `materialsystem/shaderapidx9` отправляет D3D9-вызовы в `togl`, где байткод DX9 транслируется в GLSL. `launcher/launcher.cpp` и `engine/sys_dll2.cpp` владеют циклом запуска и кадров.
 
-На стороне приложения [`SourceIOSAdapter.h`](Engine/SourceIOSAdapter.h) определяет вызовы запуска, кадра, приостановки и завершения. Статически скомпонованная сборка движка должна предоставить четыре функции из заголовка для соответствующего SDK и архитектуры. Адаптеру передаётся путь к игровым данным, имя `hl2` и `MTKView` приложения. Все вызовы выполняются на главном потоке. Во время кадра адаптер отвечает за получение и показ drawable. Приложение открывает сеанс с каталогом игры и возвращается в меню, когда адаптер завершает кадры. Если адаптер появится, его можно подключить флагами Xcode:
+На стороне приложения [`SourceIOSAdapter.h`](Engine/SourceIOSAdapter.h) определяет вызовы запуска, кадра, приостановки и завершения. Статически скомпонованная сборка движка должна предоставить четыре функции из заголовка для соответствующего SDK и архитектуры. Адаптеру передаётся путь к игровым данным, имя `hl2` и `MTKView` после появления игрового экрана. Все вызовы выполняются на главном потоке. Во время кадра адаптер отвечает за получение и показ drawable. Приложение открывает сеанс с каталогом игры и возвращается в меню, когда адаптер завершает кадры. Если адаптер появится, его можно подключить флагами Xcode:
 
 ```sh
 scripts/build-ios.sh iphoneos SOURCE_ENGINE_LINKED=1 SOURCE_ENGINE_LDFLAGS=/absolute/path/libSourceIOS.a
@@ -41,4 +53,13 @@ scripts/build-ios.sh iphoneos SOURCE_ENGINE_LINKED=1 SOURCE_ENGINE_LDFLAGS=/abso
 scripts/compile-shaders.sh build/msl
 ```
 
-До запуска HL2 требуется iOS-таргет движка с модулями HL2, адаптация его цикла под UIKit и реализация графического интерфейса для вызовов Source. Для игровых материалов также предстоит перенести легаси HLSL на профиль современного компилятора и сопоставить варианты шейдеров, форматы вершин и привязки ресурсов с Metal.
+## Игровые шейдеры
+
+Отдельный [конвертер VCS](scripts/convert-legacy-shaders.py) извлекает скомпилированные варианты из файлов `.vcs` версии 6, сохраняет номера комбинаций и статические псевдонимы и генерирует MSL через [MojoShader](https://github.com/icculus/mojoshader). [Проверка в Actions](https://github.com/skb8/srceng-ios/actions/workflows/legacy-shaders.yml) компилирует тестовые вершинные и фрагментные варианты в iOS `.metallib`. Для конвертации своих VCS сначала получите MojoShader на ревизии из [`mojoshader-revision`](Engine/Upstream/LegacyShaders/mojoshader-revision), затем выполните:
+
+```sh
+scripts/build-legacy-shader-tool.sh /path/to/mojoshader build/legacy-shaders
+scripts/convert-legacy-shaders.py build/legacy-shaders/d3d9-to-msl build/game-msl /path/to/shader.vcs
+```
+
+До запуска HL2 остаётся собрать клиент и сервер, подключить цикл кадров Source к UIKit и связать вызовы графического интерфейса Source с Metal. Для игровых шейдеров ещё нужно подключить загрузку вариантов и сопоставить форматы вершин, константы и текстуры с ресурсами Metal.

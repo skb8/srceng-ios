@@ -4,13 +4,19 @@ on:
   push:
     paths:
       - ".github/workflows/engine.yml"
-      - "Engine/Upstream/**"
+      - "Engine/Upstream/revision"
+      - "Engine/Upstream/FilesystemProbe.cpp"
+      - "Engine/Upstream/patches/**"
       - "scripts/build-engine-libs.sh"
+      - "scripts/make-filesystem-fixture.py"
   pull_request:
     paths:
       - ".github/workflows/engine.yml"
-      - "Engine/Upstream/**"
+      - "Engine/Upstream/revision"
+      - "Engine/Upstream/FilesystemProbe.cpp"
+      - "Engine/Upstream/patches/**"
       - "scripts/build-engine-libs.sh"
+      - "scripts/make-filesystem-fixture.py"
   workflow_dispatch:
 
 permissions:
@@ -19,7 +25,13 @@ permissions:
 jobs:
   libraries:
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [iphoneos, iphonesimulator]
+    env:
+      SDK: ${{ matrix.sdk }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -30,8 +42,27 @@ jobs:
           git init build/upstream
           git -C build/upstream fetch --depth 1 https://github.com/nillerusr/source-engine.git "$revision"
           git -C build/upstream checkout --detach FETCH_HEAD
-      - name: Compile tier0 and mathlib
+      - name: Apply Source portability patches
+        run: git -C build/upstream apply "$PWD/Engine/Upstream/patches/vpk-embedded-offset.patch"
+      - name: Compile Source runtime and filesystem archives
         run: |
-          scripts/build-engine-libs.sh build/upstream build/engine-core
-          xcrun lipo build/engine-core/libtier0.a -verify_arch arm64
-          xcrun lipo build/engine-core/libmathlib.a -verify_arch arm64
+          scripts/build-engine-libs.sh build/upstream build/engine-core "$SDK"
+          for module in tier0 mathlib tier1 tier2 vstdlib vpklib filesystem_stdio appframework; do
+            xcrun lipo "build/engine-core/lib$module.a" -verify_arch arm64
+          done
+      - name: Mount a VPK with the Source filesystem on Simulator
+        if: matrix.sdk == 'iphonesimulator'
+        timeout-minutes: 10
+        run: |
+          sim="$(xcrun simctl list -j devices available | jq -er '
+            [.devices | to_entries | sort_by(.key) | .[]
+              | select(.key | startswith("com.apple.CoreSimulator.SimRuntime.iOS-"))
+              | .value[] | select(.name == "iPhone 17" and .isAvailable)]
+            | last | .udid')"
+          trap 'xcrun simctl shutdown "$sim" || true' EXIT
+          xcrun simctl bootstatus "$sim" -b
+          for version in 1 2; do
+            fixture="$PWD/build/filesystem-fixture/v$version/hl2"
+            python3 scripts/make-filesystem-fixture.py --version "$version" "$fixture"
+            xcrun simctl spawn "$sim" "$PWD/build/engine-core/source-filesystem-probe" "$fixture"
+          done
