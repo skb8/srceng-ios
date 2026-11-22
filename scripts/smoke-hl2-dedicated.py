@@ -22,6 +22,7 @@ FILES = {
 }
 ''',
     "steam.inf": "PatchVersion=1.0.0.0\nProductName=hl2\nappID=220\n",
+    "cfg/valve.rc": "stuffcmds\n",
     "scripts/surfaceproperties_manifest.txt": '"surfaceproperties_manifest"\n{\n}\n',
     "scripts/game_sounds_manifest.txt": '"game_sounds_manifest"\n{\n}\n',
     "resource/gameevents.res": '"gameevents"\n{\n}\n',
@@ -62,7 +63,7 @@ def main() -> None:
         raise SystemExit(f"Source exited with status {result.returncode}")
     if 'server.dylib loaded for "Half-Life 2"' not in result.stdout:
         raise SystemExit("Source did not load the Half-Life 2 server module")
-    if marker not in result.stdout.splitlines():
+    if not any(line.strip() == marker for line in result.stdout.splitlines()):
         raise SystemExit("Source did not execute the console command")
 
 

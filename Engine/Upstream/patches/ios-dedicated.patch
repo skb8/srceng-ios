@@ -176,6 +176,34 @@ index 418c857..fc7771e 100644
 +	return result;
  }
  #endif
+diff --git a/engine/sys_dll.cpp b/engine/sys_dll.cpp
+index 4020131..5102aea 100644
+--- a/engine/sys_dll.cpp
++++ b/engine/sys_dll.cpp
+@@ -10,7 +10,10 @@
+ #if defined(_WIN32) && !defined(_X360)
+ #include "winlite.h"
+ #elif defined(OSX)
++#if !defined( SOURCE_IOS_DEDICATED )
+ #include <Carbon/Carbon.h>
++#endif
++#include <sys/types.h>
+ #include <sys/sysctl.h>
+ #elif defined(PLATFORM_BSD)
+ #include <sys/types.h>
+diff --git a/vgui2/vgui_controls/FileOpenDialog.cpp b/vgui2/vgui_controls/FileOpenDialog.cpp
+index aa481da..10dd4eb 100644
+--- a/vgui2/vgui_controls/FileOpenDialog.cpp
++++ b/vgui2/vgui_controls/FileOpenDialog.cpp
+@@ -862,7 +862,7 @@ void FileOpenDialog::OnOpenInExplorer()
+ 	GetCurrentDirectory( pCurrentDirectory, sizeof(pCurrentDirectory) );
+ #if !defined( _X360 ) && defined( WIN32 )
+ 	ShellExecute( NULL, NULL, pCurrentDirectory, NULL, NULL, SW_SHOWNORMAL );
+-#elif defined( OSX )
++#elif defined( OSX ) && !defined( SOURCE_IOS_DEDICATED )
+ 	char szCmd[ MAX_PATH * 2];
+ 	Q_snprintf( szCmd, sizeof(szCmd), "/usr/bin/open \"%s\"", pCurrentDirectory );
+ 	::system( szCmd );
 diff --git a/wscript b/wscript
 index 16f2263..cfca086 100644
 --- a/wscript
