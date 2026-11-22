@@ -9,7 +9,12 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
     private var session: EngineSession?
 
     init(baseURL: URL?) throws {
-        guard let device = MTLCreateSystemDefaultDevice() else { throw PlayError.metalUnavailable }
+        let device = MTLCreateSystemDefaultDevice()
+#if targetEnvironment(simulator)
+        if baseURL != nil && device == nil { throw PlayError.metalUnavailable }
+#else
+        guard device != nil else { throw PlayError.metalUnavailable }
+#endif
         self.baseURL = baseURL
         self.surface = MTKView(frame: .zero, device: device)
         super.init(nibName: nil, bundle: nil)
@@ -22,7 +27,7 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
 
         if let baseURL {
             session = try EngineSession.open(baseURL: baseURL, metalView: surface)
-        } else {
+        } else if surface.device != nil {
             preview = try MetalPreview(view: surface)
         }
     }
@@ -31,10 +36,24 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
 
     override func loadView() {
         view = UIView()
+        view.backgroundColor = UIColor(red: 0.035, green: 0.042, blue: 0.054, alpha: 1)
         surface.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(surface)
         controls.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(controls)
+
+        if surface.device == nil {
+            let message = UILabel()
+            message.text = "Metal недоступен в этом симуляторе."
+            message.textColor = .secondaryLabel
+            message.font = .preferredFont(forTextStyle: .body)
+            message.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(message)
+            NSLayoutConstraint.activate([
+                message.centerXAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerXAnchor),
+                message.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor),
+            ])
+        }
 
         var configuration = UIButton.Configuration.filled()
         configuration.title = "Назад"
@@ -101,7 +120,7 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
     @objc private func resume() {
         guard viewIfLoaded?.window?.windowScene?.activationState == .foregroundActive else { return }
         session?.setSuspended(false)
-        surface.isPaused = false
+        surface.isPaused = surface.device == nil
     }
 
     private func leave() {

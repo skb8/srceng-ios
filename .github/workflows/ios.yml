@@ -60,9 +60,9 @@ jobs:
           name: SourceIOS-unsigned-ipa
           path: artifacts/SourceIOS-unsigned.ipa
           if-no-files-found: error
-      - name: Launch app in iOS Simulator
+      - name: Launch app and capture Simulator screenshots
         if: matrix.sdk == 'iphonesimulator'
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: |
           sim="$(xcrun simctl list -j devices available | jq -er '
             [.devices | to_entries | sort_by(.key) | .[]
@@ -73,7 +73,21 @@ jobs:
           xcrun simctl bootstatus "$sim" -b
           app="build/$SDK/Build/Products/Release-$SDK/SourceIOS.app"
           xcrun simctl install "$sim" "$app"
+          xcrun simctl status_bar "$sim" override --time "9:41" --dataNetwork wifi \
+            --wifiMode active --wifiBars 3 --batteryState unplugged --batteryLevel 100
+          mkdir -p artifacts/screenshots
           xcrun simctl launch "$sim" io.github.skb8.srceng
+          sleep 2
+          xcrun simctl io "$sim" screenshot artifacts/screenshots/launcher.png
+          xcrun simctl launch --terminate-running-process "$sim" io.github.skb8.srceng --metal-preview
+          sleep 2
+          xcrun simctl io "$sim" screenshot artifacts/screenshots/touch-controls.png
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: matrix.sdk == 'iphonesimulator'
+        with:
+          name: SourceIOS-simulator-screenshots
+          path: artifacts/screenshots/*.png
+          if-no-files-found: error
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: SourceIOS-${{ matrix.sdk }}-unsigned

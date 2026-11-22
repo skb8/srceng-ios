@@ -25,6 +25,9 @@ private final class LauncherViewController: UIViewController, UIDocumentPickerDe
     private let previewButton = UIButton()
     private var importing = false
     private var baseURL: URL?
+#if targetEnvironment(simulator)
+    private var openPreviewOnAppearance = ProcessInfo.processInfo.arguments.contains("--metal-preview")
+#endif
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -75,6 +78,16 @@ private final class LauncherViewController: UIViewController, UIDocumentPickerDe
         ])
         refresh()
     }
+
+#if targetEnvironment(simulator)
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if openPreviewOnAppearance {
+            openPreviewOnAppearance = false
+            preview()
+        }
+    }
+#endif
 
     private func configure(_ button: UIButton, title: String, primary: Bool, action: Selector) {
         var configuration = primary ? UIButton.Configuration.filled() : UIButton.Configuration.gray()
