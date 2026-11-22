@@ -21,10 +21,22 @@ static CreateInterfaceFn loadFactory(const char *path)
     return factory;
 }
 
+static bool hasInterface(const char *path, const char *version)
+{
+    CreateInterfaceFn factory = loadFactory(path);
+    if (factory && factory(version, nullptr)) {
+        printf("Loaded %s\n", version);
+        return true;
+    }
+
+    fprintf(stderr, "%s did not expose %s\n", path, version);
+    return false;
+}
+
 int main(int argc, char **argv)
 {
-    if (argc != 3) {
-        fputs("usage: source-client-host-probe path-to-libengine path-to-libioswindow\n", stderr);
+    if (argc != 5) {
+        fputs("usage: source-client-host-probe libengine libioswindow libclient libserver\n", stderr);
         return 2;
     }
 
@@ -56,5 +68,7 @@ int main(int argc, char **argv)
         return 1;
     }
     puts("Loaded SDLMgrInterface001 and SourceIOSMetalSurface001");
-    return 0;
+
+    // From cdll_int.h and eiface.h in the pinned Source revision.
+    return hasInterface(argv[3], "VClient017") && hasInterface(argv[4], "ServerGameDLL010") ? 0 : 1;
 }

@@ -57,11 +57,13 @@ jobs:
           git -C build/upstream apply "$PWD/Engine/Upstream/patches/ios-dedicated.patch"
           git -C build/upstream apply "$PWD/Engine/Upstream/patches/vpk-embedded-offset.patch"
           git -C build/upstream apply "$PWD/Engine/Upstream/ports/ios-client-host.patch"
-      - name: Compile and link the Source client host
+      - name: Compile the client host, window and HL2 game modules
         run: |
           bash scripts/build-hl2-client-host.sh build/upstream build/sdl build/client-host '${{ matrix.sdk }}'
           xcrun lipo build/client-host/runtime/bin/libengine.dylib -verify_arch arm64
           xcrun lipo build/client-host/runtime/bin/libioswindow.dylib -verify_arch arm64
+          xcrun lipo build/client-host/runtime/hl2/bin/libclient.dylib -verify_arch arm64
+          xcrun lipo build/client-host/runtime/hl2/bin/libserver.dylib -verify_arch arm64
       - name: Load the client host and check the frame interface on Simulator
         if: matrix.sdk == 'iphonesimulator'
         timeout-minutes: 10
@@ -82,5 +84,6 @@ jobs:
           trap 'xcrun simctl shutdown "$sim" || true' EXIT
           xcrun simctl bootstatus "$sim" -b
           xcrun simctl spawn "$sim" "$runtime/source-client-host-probe" \
-            "$runtime/bin/libengine.dylib" "$runtime/bin/libioswindow.dylib"
+            "$runtime/bin/libengine.dylib" "$runtime/bin/libioswindow.dylib" \
+            "$runtime/hl2/bin/libclient.dylib" "$runtime/hl2/bin/libserver.dylib"
           bash scripts/smoke-hl2-metal-window.sh "$sim" "$runtime" build/upstream
