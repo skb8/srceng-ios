@@ -6,17 +6,21 @@ on:
       - ".github/workflows/hl2-client-host.yml"
       - "Engine/Upstream/ports/**"
       - "Engine/Upstream/ClientHostProbe.cpp"
+      - "Engine/Upstream/MetalWindowProbe.mm"
       - "Engine/Upstream/revision"
       - "Engine/Upstream/patches/**"
       - "scripts/build-hl2-client-host.sh"
+      - "scripts/smoke-hl2-metal-window.sh"
   pull_request:
     paths:
       - ".github/workflows/hl2-client-host.yml"
       - "Engine/Upstream/ports/**"
       - "Engine/Upstream/ClientHostProbe.cpp"
+      - "Engine/Upstream/MetalWindowProbe.mm"
       - "Engine/Upstream/revision"
       - "Engine/Upstream/patches/**"
       - "scripts/build-hl2-client-host.sh"
+      - "scripts/smoke-hl2-metal-window.sh"
   workflow_dispatch:
 
 permissions:
@@ -79,3 +83,4 @@ jobs:
           xcrun simctl bootstatus "$sim" -b
           xcrun simctl spawn "$sim" "$runtime/source-client-host-probe" \
             "$runtime/bin/libengine.dylib" "$runtime/bin/libioswindow.dylib"
+          bash scripts/smoke-hl2-metal-window.sh "$sim" "$runtime" build/upstream
