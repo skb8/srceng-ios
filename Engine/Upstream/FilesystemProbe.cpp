@@ -44,11 +44,16 @@ public:
 
         CUtlBuffer file;
         constexpr char expected[] = "Source iOS filesystem probe\n";
-        if (!m_Filesystem->ReadFile("sourceios/probe.txt", "GAME", file)
-            || file.TellPut() != sizeof(expected) - 1
+        if (!m_Filesystem->ReadFile("sourceios/probe.txt", "GAME", file))
+        {
+            std::fprintf(stderr, "Could not open the probe file from the GAME search path\n");
+            m_Filesystem->PrintSearchPaths();
+            return 1;
+        }
+        if (file.TellPut() != sizeof(expected) - 1
             || std::memcmp(file.Base(), expected, sizeof(expected) - 1) != 0)
         {
-            std::fprintf(stderr, "Could not read the probe file from the VPK search path\n");
+            std::fprintf(stderr, "Probe VPK payload did not match (%d bytes)\n", file.TellPut());
             return 1;
         }
         std::puts("Mounted gameinfo.txt and read the VPK fixture through IFileSystem.");

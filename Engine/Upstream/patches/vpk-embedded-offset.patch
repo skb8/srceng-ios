@@ -1,0 +1,36 @@
+diff --git a/public/vpklib/packedstore.h b/public/vpklib/packedstore.h
+--- a/public/vpklib/packedstore.h
++++ b/public/vpklib/packedstore.h
+@@ -387,5 +387,5 @@
+ 	char m_pszFileBaseName[MAX_PATH];
+ 	char m_pszFullPathName[MAX_PATH];
+-	int m_nDirectoryDataSize;
++	int m_nEmbeddedDataOffset;
+ 	int m_nWriteChunkSize;
+ 	bool m_bUseDirFile;
+diff --git a/vpklib/packedstore.cpp b/vpklib/packedstore.cpp
+--- a/vpklib/packedstore.cpp
++++ b/vpklib/packedstore.cpp
+@@ -216,5 +216,5 @@
+ 	m_pszFullPathName[0] = 0;
+ 	memset( m_pExtensionData, 0, sizeof( m_pExtensionData ) );
+-	m_nDirectoryDataSize = 0;
++	m_nEmbeddedDataOffset = 0;
+ 	m_nWriteChunkSize = k_nVPKDefaultChunkSize;
+ 
+@@ -341,5 +341,5 @@
+ 			uint32 nSizeOfHeader = dirFile.Tell();
+ 			int nSize = dirHeader.m_nDirectorySize;
+-			m_nDirectoryDataSize = dirHeader.m_nDirectorySize;
++			m_nEmbeddedDataOffset = nSizeOfHeader + dirHeader.m_nDirectorySize;
+ 			m_DirectoryData.SetCount( nSize );
+ 			dirFile.MustRead( DirectoryData(), nSize );
+@@ -1183,6 +1183,6 @@
+ 			if ( handle.m_nFileNumber == VPKFILENUMBER_EMBEDDED_IN_DIR_FILE )
+ 			{
+-				// for file data in the directory header, all offsets are relative to the size of the dir header.
+-				nDesiredPos += m_nDirectoryDataSize + sizeof( VPKDirHeader_t );
++				// The embedded data follows the format-specific header and directory.
++				nDesiredPos += m_nEmbeddedDataOffset;
+ 			}
+ 
