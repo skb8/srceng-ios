@@ -10,7 +10,8 @@ NS_ASSUME_NONNULL_BEGIN
 typedef struct SourceIOSGame SourceIOSGame;
 
 // All calls run on the UIKit main thread. The adapter owns engine state and
-// presents the Metal drawable. It may copy basePath and gameDirectory.
+// presents the Metal drawable. Start receives the view after it appears in the scene.
+// Copy basePath and gameDirectory if they are needed after SourceIOSStart returns.
 SourceIOSGame * _Nullable SourceIOSStart(const char *basePath, const char *gameDirectory,
                                         MTKView *view, NSError *__autoreleasing _Nullable * _Nullable error);
 bool SourceIOSFrame(SourceIOSGame *game, MTKView *view, const SourceInput *input);

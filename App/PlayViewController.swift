@@ -7,6 +7,7 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
     private let controls = TouchOverlay(frame: .zero)
     private var preview: MetalPreview?
     private var session: EngineSession?
+    private var attemptedGameStart = false
 
     init(baseURL: URL?) throws {
         let device = MTLCreateSystemDefaultDevice()
@@ -25,9 +26,7 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
         surface.preferredFramesPerSecond = 60
         surface.isPaused = true
 
-        if let baseURL {
-            session = try EngineSession.open(baseURL: baseURL, metalView: surface)
-        } else if surface.device != nil {
+        if baseURL == nil && surface.device != nil {
             preview = try MetalPreview(view: surface)
         }
     }
@@ -89,7 +88,22 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        startGameIfNeeded()
         resume()
+    }
+
+    private func startGameIfNeeded() {
+        guard let baseURL, !attemptedGameStart else { return }
+        attemptedGameStart = true
+        view.layoutIfNeeded()
+        do {
+            session = try EngineSession.open(baseURL: baseURL, metalView: surface)
+        } catch {
+            let alert = UIAlertController(title: "Не удалось запустить Half-Life 2",
+                                          message: error.localizedDescription, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Назад", style: .default) { [weak self] _ in self?.leave() })
+            present(alert, animated: true)
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -118,7 +132,8 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
     }
 
     @objc private func resume() {
-        guard viewIfLoaded?.window?.windowScene?.activationState == .foregroundActive else { return }
+        guard viewIfLoaded?.window?.windowScene?.activationState == .foregroundActive,
+              baseURL == nil || session != nil else { return }
         session?.setSuspended(false)
         surface.isPaused = surface.device == nil
     }
