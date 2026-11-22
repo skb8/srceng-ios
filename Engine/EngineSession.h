@@ -10,7 +10,15 @@ typedef NS_OPTIONS(uint32_t, SourceButtons) {
     SourceButtonsUse    = 1u << 2,
     SourceButtonsReload = 1u << 3,
     SourceButtonsDuck   = 1u << 4,
-    SourceButtonsMenu   = 1u << 5,
+    SourceButtonsMenu            = 1u << 5,
+    SourceButtonsAlternateAttack = 1u << 6,
+    SourceButtonsSprint          = 1u << 7,
+    SourceButtonsZoom            = 1u << 8,
+    SourceButtonsPreviousWeapon  = 1u << 9,
+    SourceButtonsNextWeapon      = 1u << 10,
+    SourceButtonsFlashlight      = 1u << 11,
+    SourceButtonsQuickSave        = 1u << 12,
+    SourceButtonsQuickLoad        = 1u << 13,
 };
 
 typedef struct {

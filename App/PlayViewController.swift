@@ -55,10 +55,11 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
         }
 
         var configuration = UIButton.Configuration.filled()
-        configuration.title = "Назад"
+        configuration.image = UIImage(systemName: "xmark")
         configuration.baseBackgroundColor = .black.withAlphaComponent(0.7)
         let exit = UIButton(configuration: configuration,
                             primaryAction: UIAction { [weak self] _ in self?.leave() })
+        exit.accessibilityLabel = "Назад"
         exit.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(exit)
 
@@ -71,8 +72,9 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
             controls.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
             controls.topAnchor.constraint(equalTo: surface.topAnchor),
             controls.bottomAnchor.constraint(equalTo: surface.bottomAnchor),
-            exit.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
-            exit.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            exit.centerXAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerXAnchor, constant: 49),
+            exit.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            exit.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
             exit.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
         ])
     }
