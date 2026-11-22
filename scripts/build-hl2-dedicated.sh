@@ -21,7 +21,7 @@ export CXXFLAGS="$CFLAGS"
 export LDFLAGS="$CFLAGS"
 
 cd "$source_dir"
-if ! python3 waf configure -T release --dedicated --ios-dedicated --build-games hl2 --disable-warns \
+if ! python3 waf configure -T release --dedicated --ios-dedicated --ios-hl2-client --build-games hl2 --disable-warns \
   --out="$output/objects" --prefix="$output/runtime"; then
   tail -n 70 "$output/objects/config.log" >&2
   exit 1

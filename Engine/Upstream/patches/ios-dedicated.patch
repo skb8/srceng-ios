@@ -200,6 +200,20 @@ index 4020131..5102aea 100644
  #include <sys/sysctl.h>
  #elif defined(PLATFORM_BSD)
  #include <sys/types.h>
+diff --git a/game/client/wscript b/game/client/wscript
+index c454d53..df7063f 100755
+--- a/game/client/wscript
++++ b/game/client/wscript
+@@ -23,6 +23,9 @@ games = {
+ }
+ 
+ def configure(conf):
++	if conf.env.IOS_HL2_CLIENT:
++		conf.undefine('DEDICATED')
++
+ 	game = conf.options.GAMES
+ 	conf.env.GAMES = game
+ 
 diff --git a/vgui2/vgui_controls/FileOpenDialog.cpp b/vgui2/vgui_controls/FileOpenDialog.cpp
 index aa481da..10dd4eb 100644
 --- a/vgui2/vgui_controls/FileOpenDialog.cpp
@@ -214,7 +228,7 @@ index aa481da..10dd4eb 100644
  	Q_snprintf( szCmd, sizeof(szCmd), "/usr/bin/open \"%s\"", pCurrentDirectory );
  	::system( szCmd );
 diff --git a/wscript b/wscript
-index 16f2263..cfca086 100644
+index 16f2263..a2422cc 100644
 --- a/wscript
 +++ b/wscript
 @@ -4,6 +4,7 @@
@@ -239,17 +253,29 @@ index 16f2263..cfca086 100644
  FT2_CHECK='''extern "C" {
  #include <ft2build.h>
  #include FT_FREETYPE_H
-@@ -291,6 +299,9 @@ def options(opt):
+@@ -149,6 +157,8 @@ projects={
+ 	]
+ }
+ 
++ios_client_projects = ['vgui2/matsys_controls', 'game/client']
++
+ @Configure.conf
+ def check_pkg(conf, package, uselib_store, fragment, *k, **kw):
+ 	errormsg = '{0} not available! Install {0} development package. Also you may need to set PKG_CONFIG_PATH environment variable'.format(package)
+@@ -291,6 +301,12 @@ def options(opt):
  	grp.add_option('-d', '--dedicated', action = 'store_true', dest = 'DEDICATED', default = False,
  		help = 'build dedicated server [default: %default]')
  
 +	grp.add_option('--ios-dedicated', action = 'store_true', dest = 'IOS_DEDICATED', default = False,
 +		help = 'build the dedicated engine using an iOS SDK and Clang target')
 +
++	grp.add_option('--ios-hl2-client', action = 'store_true', dest = 'IOS_HL2_CLIENT', default = False,
++		help = 'also build the HL2 client game module with --ios-dedicated')
++
  	grp.add_option('--tests', action = 'store_true', dest = 'TESTS', default = False,
  		help = 'build unit tests [default: %default]')
  
-@@ -383,6 +394,10 @@ def check_deps(conf):
+@@ -383,6 +399,10 @@ def check_deps(conf):
  	if conf.options.TESTS:
  		return
  
@@ -260,11 +286,14 @@ index 16f2263..cfca086 100644
  	if conf.env.DEST_OS != 'android':
  		if conf.env.DEST_OS != 'win32':
  			if conf.options.SDL:
-@@ -447,6 +462,21 @@ def configure(conf):
+@@ -447,6 +467,24 @@ def configure(conf):
  	if sys.platform == 'win32':
  		conf.load('msvc_pdb_ext msdev msvs msvcdeps')
  	conf.load('subproject xcompile compiler_c compiler_cxx gccdeps gitversion clang_compilation_database strip_on_install_v2 waf_unit_test enforce_pic')
 +	conf.env.IOS_DEDICATED = conf.options.IOS_DEDICATED
++	conf.env.IOS_HL2_CLIENT = conf.options.IOS_HL2_CLIENT
++	if conf.env.IOS_HL2_CLIENT and not conf.env.IOS_DEDICATED:
++		conf.fatal('--ios-hl2-client requires --ios-dedicated')
 +	if conf.env.IOS_DEDICATED:
 +		if not conf.options.DEDICATED or conf.options.TESTS or conf.env.DEST_OS != 'darwin':
 +			conf.fatal('--ios-dedicated requires --dedicated and an iOS Apple Clang target')
@@ -282,3 +311,21 @@ index 16f2263..cfca086 100644
  	if conf.env.DEST_OS == 'win32' and conf.env.DEST_CPU == 'amd64':
  		conf.load('masm')
  	elif conf.env.DEST_OS == 'darwin':
+@@ -620,7 +658,7 @@ def configure(conf):
+ 	if conf.options.TESTS:
+ 		conf.add_subproject(projects['tests'])
+ 	elif conf.options.DEDICATED:
+-		conf.add_subproject(projects['dedicated'])
++		conf.add_subproject(projects['dedicated'] + (ios_client_projects if conf.env.IOS_HL2_CLIENT else []))
+ 	else:
+ 		conf.add_subproject(projects['game'])
+ 
+@@ -642,7 +680,7 @@ def build(bld):
+ 	if bld.env.TESTS:
+ 		bld.add_subproject(projects['tests'])
+ 	elif bld.env.DEDICATED:
+-		bld.add_subproject(projects['dedicated'])
++		bld.add_subproject(projects['dedicated'] + (ios_client_projects if bld.env.IOS_HL2_CLIENT else []))
+ 	else:
+ 		if bld.env.TOGLES:
+ 			projects['game'] += ['togles']

@@ -43,12 +43,13 @@ jobs:
         run: |
           git -C build/upstream apply "$PWD/Engine/Upstream/patches/ios-dedicated.patch"
           git -C build/upstream apply "$PWD/Engine/Upstream/patches/vpk-embedded-offset.patch"
-      - name: Build the dedicated engine and HL2 server
+      - name: Build the dedicated engine and HL2 game modules
         run: |
           bash scripts/build-hl2-dedicated.sh build/upstream build/hl2 '${{ matrix.sdk }}'
           xcrun lipo build/hl2/runtime/dedicated_launcher -verify_arch arm64
           xcrun lipo build/hl2/runtime/bin/libengine.dylib -verify_arch arm64
           xcrun lipo build/hl2/runtime/hl2/bin/libserver.dylib -verify_arch arm64
+          xcrun lipo build/hl2/runtime/hl2/bin/libclient.dylib -verify_arch arm64
       - name: Start the Source host and HL2 server on Simulator
         if: matrix.sdk == 'iphonesimulator'
         timeout-minutes: 10
