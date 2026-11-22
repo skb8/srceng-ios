@@ -30,8 +30,9 @@ jobs:
           git init build/upstream
           git -C build/upstream fetch --depth 1 https://github.com/nillerusr/source-engine.git "$revision"
           git -C build/upstream checkout --detach FETCH_HEAD
-      - name: Compile tier0 and mathlib
+      - name: Compile Source runtime and filesystem archives
         run: |
           scripts/build-engine-libs.sh build/upstream build/engine-core
-          xcrun lipo build/engine-core/libtier0.a -verify_arch arm64
-          xcrun lipo build/engine-core/libmathlib.a -verify_arch arm64
+          for module in tier0 mathlib tier1 tier2 vstdlib vpklib filesystem_stdio appframework; do
+            xcrun lipo "build/engine-core/lib$module.a" -verify_arch arm64
+          done
