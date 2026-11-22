@@ -113,11 +113,19 @@ index 108d38b..7529780 100644
  
  	m_bConDebug = CommandLine()->FindParm( "-condebug" ) != 0;
 diff --git a/dedicated/sys_ded.cpp b/dedicated/sys_ded.cpp
-index 50f9f24..907046d 100644
+index 50f9f24..67ead5c 100644
 --- a/dedicated/sys_ded.cpp
 +++ b/dedicated/sys_ded.cpp
-@@ -406,7 +406,9 @@ void UTIL_ComputeBaseDir( char *pBaseDir, int nMaxLen )
- 		strcpy( pBaseDir, pOverrideDir );
+@@ -400,13 +400,15 @@ void UTIL_ComputeBaseDir( char *pBaseDir, int nMaxLen )
+ 		}
+ 	}
+ 
+-	char const *pOverrideDir = CommandLine()->CheckParm( "-basedir" );
++	char const *pOverrideDir = CommandLine()->ParmValue( "-basedir", (const char *)NULL );
+ 	if ( pOverrideDir )
+ 	{
+-		strcpy( pBaseDir, pOverrideDir );
++		Q_strncpy( pBaseDir, pOverrideDir, nMaxLen );
  	}
  
 +#ifndef SOURCE_IOS_DEDICATED
@@ -140,21 +148,22 @@ index 50f9f24..907046d 100644
  	// Rehook the command line through VCR mode.
  	CommandLine()->CreateCmdLine( VCRHook_GetCommandLine() );
 diff --git a/dedicated_main/main.cpp b/dedicated_main/main.cpp
-index 418c857..fc7771e 100644
+index 418c857..1e55d16 100644
 --- a/dedicated_main/main.cpp
 +++ b/dedicated_main/main.cpp
-@@ -188,6 +188,10 @@ static void WaitForDebuggerConnect( int argc, char *argv[], int time )
+@@ -188,6 +188,11 @@ static void WaitForDebuggerConnect( int argc, char *argv[], int time )
  
  int main( int argc, char *argv[] )
  {
 +#ifdef SOURCE_IOS_DEDICATED
++	setvbuf( stdout, NULL, _IOLBF, 0 );
 +	const char *pBinaryName = "@executable_path/bin/libdedicated" DLL_EXT_STRING;
 +	void *dedicated = dlopen( pBinaryName, RTLD_NOW );
 +#else
  	// Must add 'bin' to the path....
  	char* pPath = getenv("LD_LIBRARY_PATH");
  	char szBuffer[4096];
-@@ -211,6 +215,7 @@ int main( int argc, char *argv[] )
+@@ -211,6 +216,7 @@ int main( int argc, char *argv[] )
  	void *dedicated = dlopen( pBinaryName, RTLD_NOW );
  	if ( !dedicated )
  		dedicated = dlopen( "bin/libdedicated" DLL_EXT_STRING, RTLD_NOW );
@@ -162,7 +171,7 @@ index 418c857..fc7771e 100644
  
  	if ( !dedicated )
  	{
-@@ -226,9 +231,12 @@ int main( int argc, char *argv[] )
+@@ -226,9 +232,12 @@ int main( int argc, char *argv[] )
  
  	WaitForDebuggerConnect( argc, argv, 30 );
  

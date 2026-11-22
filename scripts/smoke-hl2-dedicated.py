@@ -25,7 +25,9 @@ FILES = {
     "cfg/valve.rc": "stuffcmds\n",
     "scripts/surfaceproperties_manifest.txt": '"surfaceproperties_manifest"\n{\n}\n',
     "scripts/game_sounds_manifest.txt": '"game_sounds_manifest"\n{\n}\n',
+    "scripts/soundscapes_manifest.txt": '"soundscapes_manifest"\n{\n}\n',
     "resource/gameevents.res": '"gameevents"\n{\n}\n',
+    "resource/hltvevents.res": '"hltvevents"\n{\n    "source_ios_smoke" { "local" "1" }\n}\n',
     "resource/ModEvents.res": '"modevents"\n{\n}\n',
 }
 
