@@ -24,9 +24,10 @@ sdk_path="$(xcrun --sdk "$sdk" --show-sdk-path)"
 cxx="$(xcrun --sdk "$sdk" --find clang++)"
 libtool="$(xcrun --sdk "$sdk" --find libtool)"
 common_flags=(
-  -target "$target" -isysroot "$sdk_path" -std=c++11 -O2 -fno-strict-aliasing
+  -target "$target" -isysroot "$sdk_path" -std=c++11 -O2 -fno-strict-aliasing -fsigned-char
   -DOSX=1 -D_OSX=1 -DPOSIX=1 -D_POSIX=1 -DPLATFORM_POSIX=1 -DGNUC=1
   -DPLATFORM_64BITS=1 -DNO_HOOK_MALLOC=1 -DNDEBUG=1 -D_DLL_EXT=.dylib
+  '-DWAF_CFLAGS="iOS arm64 C++11"' '-DWAF_LDFLAGS="static archive"'
   -I"$source_dir/public" -I"$source_dir/public/tier0"
   -I"$source_dir/public/mathlib" -I"$source_dir/common"
 )
