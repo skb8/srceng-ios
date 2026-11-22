@@ -1,0 +1,4 @@
+/build/
+/SourceIOS.xcodeproj/
+/App/Generated/
+.DS_Store

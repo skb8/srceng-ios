@@ -1,0 +1,47 @@
+name: Source iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.sdk }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [iphoneos, iphonesimulator]
+    env:
+      SDK: ${{ matrix.sdk }}
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install build tools
+        run: |
+          brew install glslang spirv-cross spirv-tools xcodegen
+          xcodebuild -version
+          xcrun --sdk "$SDK" metal --version || xcodebuild -downloadComponent metalToolchain
+      - name: Build app and compile Metal shaders
+        run: scripts/build-ios.sh "$SDK"
+      - name: Package unsigned app
+        run: |
+          app="build/$SDK/Build/Products/Release-$SDK/SourceIOS.app"
+          test -x "$app/SourceIOS"
+          test -s "$app/LightmappedPreview.metallib"
+          xcrun lipo -verify_arch arm64 "$app/SourceIOS"
+          mkdir -p artifacts
+          ditto -c -k --keepParent "$app" "artifacts/SourceIOS-$SDK-unsigned.zip"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: SourceIOS-${{ matrix.sdk }}-unsigned
+          path: artifacts/*.zip
+          if-no-files-found: error
