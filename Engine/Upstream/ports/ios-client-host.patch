@@ -34,6 +34,220 @@
  }
  
  
+--- a/appframework/sdlmgr.cpp
++++ b/appframework/sdlmgr.cpp
+@@ -6,10 +6,17 @@
+ 
+ #ifdef USE_SDL
+ #include "SDL.h"
++#if defined( SOURCE_IOS_CLIENT_HOST )
++#include "SDL_metal.h"
++#else
+ #include "SDL_opengl.h"
+ #endif
++#endif
+ 
+ #include "appframework/ilaunchermgr.h"
++#if defined( SOURCE_IOS_CLIENT_HOST )
++#include "appframework/ios_metal_surface.h"
++#endif
+ #include "inputsystem/ButtonCode.h"
+ 
+ #include "togl/rendermechanism.h"
+@@ -247,6 +254,9 @@
+ }
+ 
+ class CSDLMgr : public ILauncherMgr
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	, public ISourceIOSMetalSurface
++#endif
+ {
+ public:
+ 
+@@ -278,6 +288,9 @@
+ 	virtual void SetCursorPosition( int x, int y );
+ 	
+ 	virtual void *GetWindowRef() { return (void *)m_Window; }
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	void *GetMetalLayer() const override;
++#endif
+ 
+ 	virtual void SetWindowFullScreen( bool bFullScreen, int nWidth, int nHeight );
+ 	virtual bool IsWindowFullScreen() { return m_bFullScreen; }
+@@ -350,6 +363,10 @@
+ 	uint m_nWindowRefCount;
+ 
+ 	SDL_Window *m_Window;
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	SDL_MetalView m_MetalView = NULL;
++	bool m_bOwnsVideo = false;
++#endif
+ 
+ 	bool m_bCursorVisible;
+ 	bool m_bSetMouseVisibleCalled;
+@@ -420,6 +437,23 @@
+ 	}
+ 	return (void *)g_pLauncherMgr;
+ }
++
++#if defined( SOURCE_IOS_CLIENT_HOST )
++EXPOSE_INTERFACE_FN( CreateSDLMgr, ILauncherMgr, SDLMGR_INTERFACE_VERSION );
++
++static void *CreateIOSMetalSurface()
++{
++	auto *launcher = static_cast<ILauncherMgr *>( CreateSDLMgr() );
++	return static_cast<ISourceIOSMetalSurface *>( static_cast<CSDLMgr *>( launcher ) );
++}
++
++EXPOSE_INTERFACE_FN( CreateIOSMetalSurface, ISourceIOSMetalSurface, SOURCE_IOS_METAL_SURFACE_VERSION );
++
++void *CSDLMgr::GetMetalLayer() const
++{
++	return m_MetalView ? SDL_Metal_GetLayer( m_MetalView ) : NULL;
++}
++#endif
+ 
+ // Display index where we are currently fullscreen on (or -1).
+ ConVar sdl_displayindex_fullscreen( "sdl_displayindex_fullscreen", "-1", FCVAR_HIDDEN );
+@@ -503,7 +537,9 @@
+ CSDLMgr::CSDLMgr()
+ {
+ 	m_Window = NULL;
++#if !defined( SOURCE_IOS_CLIENT_HOST )
+ 	Init();
++#endif
+ }
+ 
+ InitReturnVal_t CSDLMgr::Init()
+@@ -515,8 +551,18 @@
+ 
+ 	if (!SDL_WasInit(SDL_INIT_VIDEO))
+ 	{
++#if defined( SOURCE_IOS_CLIENT_HOST )
++		SDL_SetMainReady();
++		if ( SDL_InitSubSystem( SDL_INIT_VIDEO ) != 0 )
++		{
++			Warning( "SDL video initialization failed: %s\n", SDL_GetError() );
++			return INIT_FAILED;
++		}
++		m_bOwnsVideo = true;
++#else
+ 		if (SDL_Init(SDL_INIT_VIDEO) == -1)
+ 			Error( "SDL_Init(SDL_INIT_VIDEO) failed: %s", SDL_GetError() );
++#endif
+ 
+ #if defined( DX_TO_GL_ABSTRACTION )
+ 		if ( CommandLine()->FindParm( "-gl_debug" ) )
+@@ -592,6 +638,7 @@
+ 
+ 	m_flPrevGLSwapWindowTime = 0.0f;
+ 
++#if !defined( SOURCE_IOS_CLIENT_HOST )
+ 	memset(m_pixelFormatAttribs, '\0', sizeof (m_pixelFormatAttribs));
+ 
+ 	int *attCursor = m_pixelFormatAttribs;
+@@ -671,13 +718,21 @@
+ 	#undef SET_GL_ATTR
+ 
+ 	m_pixelFormatAttribCount = (attCursor - &m_pixelFormatAttribs[0]) / 2;
++#endif
+ 
+ 	// we need a GL context before we dig down further, since we're calling
+ 	//  GL entry points, but the game hasn't made a window yet. So it's time
+ 	//  to make a window! We make a 640x480 one here, and later, when asked
+ 	//  to really actually make a window, we just resize the one we built here.
+ 	if ( !CreateHiddenGameWindow( "", 1280, 720 ) )
++	{
++#if defined( SOURCE_IOS_CLIENT_HOST )
++		Shutdown();
++		return INIT_FAILED;
++#else
+ 		Error( "CreateGameWindow failed" );
++#endif
++	}
+ 
+ 	SDL_HideWindow( m_Window );
+ 
+@@ -709,6 +764,7 @@
+ {
+ 	SDLAPP_FUNC;
+ 
++#if defined( DX_TO_GL_ABSTRACTION )
+ 	if (gGL && m_readFBO)
+ #ifdef TOGLES
+ 		gGL->glDeleteFramebuffers(1, &m_readFBO);
+@@ -716,6 +772,7 @@
+ 		gGL->glDeleteFramebuffersEXT(1, &m_readFBO);
+ #endif
+ 	m_readFBO = 0;
++#endif
+ 
+ 	if ( m_Window )
+ 	{
+@@ -724,8 +781,16 @@
+ 		DestroyGameWindow();
+ 	}
+ 
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	if ( m_bOwnsVideo )
++	{
++		SDL_QuitSubSystem( SDL_INIT_VIDEO );
++		m_bOwnsVideo = false;
++	}
++#else
+ 	SDL_GL_UnloadLibrary();
+ 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
++#endif
+ }
+ 
+ bool CSDLMgr::CreateGameWindow( const char *pTitle, bool bWindowed, int width, int height )
+@@ -819,14 +884,31 @@
+ 	int flags = SDL_WINDOW_HIDDEN;
+ #if defined( DX_TO_GL_ABSTRACTION )
+ 	flags |= SDL_WINDOW_OPENGL;
++#elif defined( SOURCE_IOS_CLIENT_HOST )
++	flags |= SDL_WINDOW_METAL | SDL_WINDOW_ALLOW_HIGHDPI;
+ #endif
+ 	m_Window = SDL_CreateWindow( pTitle, x, y, width, height, flags );
+ 
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	if ( !m_Window )
++	{
++		Warning( "Failed to create the iOS window: %s\n", SDL_GetError() );
++		return false;
++	}
++	m_MetalView = SDL_Metal_CreateView( m_Window );
++	if ( !m_MetalView )
++	{
++		Warning( "Failed to create the SDL Metal view: %s\n", SDL_GetError() );
++		DestroyGameWindow();
++		return false;
++	}
++#else
+ 	if (m_Window == NULL)
+ 		Error( "Failed to create SDL window: %s", SDL_GetError() );
++#endif
+ 	SetAssertDialogParent( m_Window );
+ 
+-#ifdef OSX
++#if defined( OSX ) && defined( DX_TO_GL_ABSTRACTION )
+ 
+ 	GLMRendererInfoFields rendererInfo;
+ 	GetDisplayDB()->GetRendererInfo( 0, &rendererInfo );
+@@ -2041,6 +2123,13 @@
+ 
+ 		SDL_SetWindowFullscreen(m_Window, SDL_FALSE);  // just in case.
+ 		SDL_SetWindowGrab(m_Window, SDL_FALSE);  // just in case.
++#if defined( SOURCE_IOS_CLIENT_HOST )
++		if ( m_MetalView )
++		{
++			SDL_Metal_DestroyView( m_MetalView );
++			m_MetalView = NULL;
++		}
++#endif
+ 		SDL_DestroyWindow(m_Window);
+ 		m_Window = NULL;
+ 		SetAssertDialogParent( NULL );
 --- a/appframework/wscript
 +++ b/appframework/wscript
 @@ -20,7 +20,7 @@
@@ -54,6 +268,20 @@
  		libs += ['FOUNDATION', 'APPKIT', 'IOKIT']
  
  	bld.stlib(
+@@ -65,3 +65,13 @@
+ 		idx      = bld.get_taskgen_count()
+ 	)
+ 
++	if bld.env.IOS_CLIENT_HOST:
++		bld.shlib(
++			source = ['sdlmgr.cpp'],
++			target = 'ioswindow',
++			includes = includes,
++			use = ['SDL2', 'tier0', 'tier1', 'vstdlib'],
++			install_path = bld.env.LIBDIR,
++			idx = bld.get_taskgen_count()
++		)
++
 --- a/engine/audio/snd_win.cpp
 +++ b/engine/audio/snd_win.cpp
 @@ -9,7 +9,7 @@
@@ -85,6 +313,42 @@
  	g_pVoiceRecord = CreateVoiceRecord_AudioQueue( Voice_SamplesPerSec() );
  	if ( !g_pVoiceRecord )
  	{
+--- a/engine/audio/voice_mixer_controls_openal.cpp
++++ b/engine/audio/voice_mixer_controls_openal.cpp
+@@ -6,7 +6,7 @@
+ //=============================================================================//
+ 
+ 
+-#ifdef OSX
++#if defined( OSX ) && !defined( SOURCE_IOS_CLIENT_HOST )
+ #include <Carbon/Carbon.h>
+ #include <CoreAudio/CoreAudio.h>
+ #endif
+@@ -20,7 +20,7 @@
+ 
+ 
+ 
+-#ifndef OSX
++#if !defined( OSX ) || defined( SOURCE_IOS_CLIENT_HOST )
+ 
+ 
+ class CMixerControls : public IMixerControls
+@@ -33,7 +33,14 @@
+ 	virtual bool	GetValue_Float(Control iControl, float &value ) {return false;}
+ 	virtual bool	SetValue_Float(Control iControl, float value) {return false;}
+ 	virtual bool	SelectMicrophoneForWaveInput() {return false;}
+-	virtual const char *GetMixerName() {return "Linux"; }
++	virtual const char *GetMixerName()
++	{
++#if defined( SOURCE_IOS_CLIENT_HOST )
++		return "iOS";
++#else
++		return "Linux";
++#endif
++	}
+ 	
+ private:
+ };
 --- a/engine/sys_dll.cpp
 +++ b/engine/sys_dll.cpp
 @@ -10,7 +10,7 @@
@@ -478,22 +742,23 @@
  
  		source += [
  			'client_pch.cpp',
-@@ -332,12 +337,12 @@
- 			'toolframework.cpp',
+@@ -333,11 +338,10 @@
  		]
  		
--		if bld.env.DEST_OS != 'win32':
-+		if bld.env.DEST_OS != 'win32' and not bld.env.IOS_CLIENT_HOST:
- 			source += [	
- 				'audio/voice_mixer_controls_openal.cpp', #[$OSXALL||$LINUXALL]
- 				'audio/voice_record_openal.cpp' #[$OSXALL||$LINUXALL]
- 			]
+ 		if bld.env.DEST_OS != 'win32':
+-			source += [	
+-				'audio/voice_mixer_controls_openal.cpp', #[$OSXALL||$LINUXALL]
+-				'audio/voice_record_openal.cpp' #[$OSXALL||$LINUXALL]
+-			]
 -		if bld.env.DEST_OS == 'darwin':
++			source += ['audio/voice_mixer_controls_openal.cpp']
++			if not bld.env.IOS_CLIENT_HOST:
++				source += ['audio/voice_record_openal.cpp']
 +		if bld.env.DEST_OS == 'darwin' and not bld.env.IOS_CLIENT_HOST:
  			source += [
  				'audio/snd_dev_openal.cpp', # [$OSXALL]
  				'audio/snd_dev_mac_audioqueue.cpp',#	[$OSXALL]
-@@ -363,7 +368,7 @@
+@@ -363,7 +367,7 @@
  		libs += ['SSL', 'CRYPTO'] # android curl was built with openssl
  	elif bld.env.DEST_OS == 'win32':
  		libs += ['USER32', 'WINMM', 'WININET', 'DSOUND', 'DXGUID', 'GDI32', 'bzip2']
@@ -502,6 +767,24 @@
  		libs += ['APPKIT', 'COREAUDIO', 'AUDIOTOOLBOX', 'SYSTEMCONFIGURATION']
  		
  	install_path = bld.env.LIBDIR
+--- /dev/null
++++ b/public/appframework/ios_metal_surface.h
+@@ -0,0 +1,15 @@
++#ifndef SOURCE_IOS_METAL_SURFACE_H
++#define SOURCE_IOS_METAL_SURFACE_H
++
++#include "tier1/interface.h"
++
++#define SOURCE_IOS_METAL_SURFACE_VERSION "SourceIOSMetalSurface001"
++
++class ISourceIOSMetalSurface : public IBaseInterface
++{
++public:
++	// Returns a borrowed CAMetalLayer after the launcher creates its window.
++	virtual void *GetMetalLayer() const = 0;
++};
++
++#endif
 --- /dev/null
 +++ b/public/engine/ios_client_host.h
 @@ -0,0 +1,19 @@

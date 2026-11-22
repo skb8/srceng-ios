@@ -57,6 +57,7 @@ jobs:
         run: |
           bash scripts/build-hl2-client-host.sh build/upstream build/sdl build/client-host '${{ matrix.sdk }}'
           xcrun lipo build/client-host/runtime/bin/libengine.dylib -verify_arch arm64
+          xcrun lipo build/client-host/runtime/bin/libioswindow.dylib -verify_arch arm64
       - name: Load the client host and check the frame interface on Simulator
         if: matrix.sdk == 'iphonesimulator'
         timeout-minutes: 10
@@ -66,7 +67,7 @@ jobs:
             -target arm64-apple-ios17.0-simulator \
             -isysroot "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
             -DOSX=1 -D_OSX=1 -DPOSIX=1 -D_POSIX=1 -DPLATFORM_POSIX=1 \
-            -DGNUC=1 -DPLATFORM_64BITS=1 -DNDEBUG=1 \
+            -DGNUC=1 -DPLATFORM_64BITS=1 -DNDEBUG=1 -DUSE_SDL=1 \
             -Ibuild/upstream/public -Ibuild/upstream/common \
             Engine/Upstream/ClientHostProbe.cpp -o "$runtime/source-client-host-probe"
           sim="$(xcrun simctl list -j devices available | jq -er '
@@ -76,4 +77,5 @@ jobs:
             | last | .udid')"
           trap 'xcrun simctl shutdown "$sim" || true' EXIT
           xcrun simctl bootstatus "$sim" -b
-          xcrun simctl spawn "$sim" "$runtime/source-client-host-probe" "$runtime/bin/libengine.dylib"
+          xcrun simctl spawn "$sim" "$runtime/source-client-host-probe" \
+            "$runtime/bin/libengine.dylib" "$runtime/bin/libioswindow.dylib"

@@ -3,27 +3,33 @@
 
 #include "engine/ios_client_host.h"
 #include "engine_launcher_api.h"
+#include "appframework/ilaunchermgr.h"
+#include "appframework/ios_metal_surface.h"
 
-int main(int argc, char **argv)
+static CreateInterfaceFn loadFactory(const char *path)
 {
-    if (argc != 2) {
-        fputs("usage: source-client-host-probe path-to-libengine\n", stderr);
-        return 2;
-    }
-
-    void *module = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
+    void *module = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!module) {
-        fprintf(stderr, "Failed to load the Source client host: %s\n", dlerror());
-        return 1;
+        fprintf(stderr, "Failed to load %s: %s\n", path, dlerror());
+        return nullptr;
     }
 
     auto factory = reinterpret_cast<CreateInterfaceFn>(dlsym(module, "CreateInterface"));
     if (!factory) {
-        fprintf(stderr, "Failed to resolve the client host factory: %s\n", dlerror());
-        return 1;
+        fprintf(stderr, "Failed to resolve CreateInterface in %s: %s\n", path, dlerror());
+    }
+    return factory;
+}
+
+int main(int argc, char **argv)
+{
+    if (argc != 3) {
+        fputs("usage: source-client-host-probe path-to-libengine path-to-libioswindow\n", stderr);
+        return 2;
     }
 
-    if (!factory(VENGINE_LAUNCHER_API_VERSION, nullptr)) {
+    CreateInterfaceFn factory = loadFactory(argv[1]);
+    if (!factory || !factory(VENGINE_LAUNCHER_API_VERSION, nullptr)) {
         fputs("The client host did not expose IEngineAPI\n", stderr);
         return 1;
     }
@@ -37,5 +43,18 @@ int main(int argc, char **argv)
     host->Stop();
     host->Stop();
     puts("Loaded IEngineAPI and SourceIOSClientHost001");
+
+    factory = loadFactory(argv[2]);
+    if (!factory || !factory(SDLMGR_INTERFACE_VERSION, nullptr)) {
+        fputs("The window module did not expose the Source launcher interface\n", stderr);
+        return 1;
+    }
+
+    auto *surface = static_cast<ISourceIOSMetalSurface *>(factory(SOURCE_IOS_METAL_SURFACE_VERSION, nullptr));
+    if (!surface || surface->GetMetalLayer()) {
+        fputs("The window module did not expose an inactive Metal surface\n", stderr);
+        return 1;
+    }
+    puts("Loaded SDLMgrInterface001 and SourceIOSMetalSurface001");
     return 0;
 }

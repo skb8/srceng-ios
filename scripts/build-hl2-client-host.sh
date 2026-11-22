@@ -42,7 +42,7 @@ if ! python3 waf configure -T release --ios-client-host --build-games hl2 --disa
 fi
 
 log="$output/build.log"
-if ! python3 waf install -kk --targets=engine -j "$jobs" > "$log" 2>&1; then
+if ! python3 waf install -kk --targets=engine,ioswindow -j "$jobs" > "$log" 2>&1; then
   sed -E '/^\[[[:space:]0-9]+\/[[:space:]0-9]+\]/d; /^\+ install /d' "$log" >&2
   exit 1
 fi
