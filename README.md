@@ -23,6 +23,8 @@ scripts/build-ios.sh iphonesimulator
 
 ## Подключение движка
 
+Отдельный [workflow Source Engine arm64 libraries](https://github.com/skb8/srceng-ios/actions/workflows/engine.yml) компилирует оригинальные `tier0` и `mathlib` для iOS arm64 в статические библиотеки. Ревизия `master` закреплена в [`Engine/Upstream/revision`](Engine/Upstream/revision). На этом этапе библиотеки не входят в приложение.
+
 Ветка [`ios` форка](https://github.com/nillerusr/source-engine/tree/79c3bc86bdc61b75d402514ee2f372753d1732bf) содержит изменения для Apple-платформ. В Waf эта ревизия использует профиль Darwin с AppKit, Carbon и OpenGL. В исходных путях рендера `materialsystem/shaderapidx9` отправляет D3D9-вызовы в `togl`, где байткод DX9 транслируется в GLSL. `launcher/launcher.cpp` и `engine/sys_dll2.cpp` владеют циклом запуска и кадров.
 
 На стороне приложения [`SourceIOSAdapter.h`](Engine/SourceIOSAdapter.h) определяет вызовы запуска, кадра, приостановки и завершения. Статически скомпонованная сборка движка должна предоставить четыре функции из заголовка для соответствующего SDK и архитектуры. Адаптеру передаётся путь к игровым данным, имя `hl2` и `MTKView` приложения. Все вызовы выполняются на главном потоке. Во время кадра адаптер отвечает за получение и показ drawable. Приложение открывает сеанс с каталогом игры и возвращается в меню, когда адаптер завершает кадры. Если адаптер появится, его можно подключить флагами Xcode:
