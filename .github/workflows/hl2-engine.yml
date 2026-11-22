@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/hl2-engine.yml"
       - "Engine/Upstream/revision"
+      - "Engine/Upstream/ClientProbe.c"
       - "Engine/Upstream/patches/**"
       - "scripts/build-hl2-dedicated.sh"
       - "scripts/smoke-hl2-dedicated.py"
@@ -12,6 +13,7 @@ on:
     paths:
       - ".github/workflows/hl2-engine.yml"
       - "Engine/Upstream/revision"
+      - "Engine/Upstream/ClientProbe.c"
       - "Engine/Upstream/patches/**"
       - "scripts/build-hl2-dedicated.sh"
       - "scripts/smoke-hl2-dedicated.py"
@@ -50,7 +52,7 @@ jobs:
           xcrun lipo build/hl2/runtime/bin/libengine.dylib -verify_arch arm64
           xcrun lipo build/hl2/runtime/hl2/bin/libserver.dylib -verify_arch arm64
           xcrun lipo build/hl2/runtime/hl2/bin/libclient.dylib -verify_arch arm64
-      - name: Start the Source host and HL2 server on Simulator
+      - name: Load the HL2 client and start the Source host on Simulator
         if: matrix.sdk == 'iphonesimulator'
         timeout-minutes: 10
         run: |
@@ -60,5 +62,10 @@ jobs:
               | .value[] | select(.name == "iPhone 17" and .isAvailable)]
             | last | .udid')"
           trap 'xcrun simctl shutdown "$sim" || true' EXIT
+          runtime="$PWD/build/hl2/runtime"
+          xcrun --sdk iphonesimulator clang -target arm64-apple-ios17.0-simulator \
+            -isysroot "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
+            Engine/Upstream/ClientProbe.c -o "$runtime/source-client-probe"
           xcrun simctl bootstatus "$sim" -b
-          python3 scripts/smoke-hl2-dedicated.py "$sim" build/hl2/runtime
+          xcrun simctl spawn "$sim" "$runtime/source-client-probe" "$runtime/hl2/bin/libclient.dylib"
+          python3 scripts/smoke-hl2-dedicated.py "$sim" "$runtime"

@@ -200,6 +200,33 @@ index 4020131..5102aea 100644
  #include <sys/sysctl.h>
  #elif defined(PLATFORM_BSD)
  #include <sys/types.h>
+diff --git a/game/client/in_mouse.cpp b/game/client/in_mouse.cpp
+index bcf715a..f37b1fa 100644
+--- a/game/client/in_mouse.cpp
++++ b/game/client/in_mouse.cpp
+@@ -135,7 +135,7 @@ void CInput::ActivateMouse (void)
+ 		m_fMouseActive = true;
+ 
+ 		ResetMouse();
+-#if !defined( PLATFORM_WINDOWS )
++#if defined( USE_SDL ) && !defined( PLATFORM_WINDOWS )
+ 		int dx, dy;
+ 		engine->GetMouseDelta( dx, dy, true );
+ #endif
+@@ -601,6 +601,13 @@ void CInput::AccumulateMouse( void )
+ 		engine->GetMouseDelta( dx, dy );
+ 		m_flAccumulatedMouseXMovement += dx;
+ 		m_flAccumulatedMouseYMovement += dy;
++#elif defined( SOURCE_IOS_DEDICATED )
++		int dx, dy;
++		if ( inputsystem->GetRawMouseAccumulators( dx, dy ) )
++		{
++			m_flAccumulatedMouseXMovement += dx;
++			m_flAccumulatedMouseYMovement += dy;
++		}
+ #else
+ #error
+ #endif
 diff --git a/game/client/wscript b/game/client/wscript
 index c454d53..df7063f 100755
 --- a/game/client/wscript
