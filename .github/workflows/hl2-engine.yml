@@ -7,12 +7,14 @@ on:
       - "Engine/Upstream/revision"
       - "Engine/Upstream/patches/**"
       - "scripts/build-hl2-dedicated.sh"
+      - "scripts/smoke-hl2-dedicated.py"
   pull_request:
     paths:
       - ".github/workflows/hl2-engine.yml"
       - "Engine/Upstream/revision"
       - "Engine/Upstream/patches/**"
       - "scripts/build-hl2-dedicated.sh"
+      - "scripts/smoke-hl2-dedicated.py"
   workflow_dispatch:
 
 permissions:
@@ -47,3 +49,15 @@ jobs:
           xcrun lipo build/hl2/runtime/dedicated_launcher -verify_arch arm64
           xcrun lipo build/hl2/runtime/bin/libengine.dylib -verify_arch arm64
           xcrun lipo build/hl2/runtime/hl2/bin/libserver.dylib -verify_arch arm64
+      - name: Start the Source host and HL2 server on Simulator
+        if: matrix.sdk == 'iphonesimulator'
+        timeout-minutes: 10
+        run: |
+          sim="$(xcrun simctl list -j devices available | jq -er '
+            [.devices | to_entries | sort_by(.key) | .[]
+              | select(.key | startswith("com.apple.CoreSimulator.SimRuntime.iOS-"))
+              | .value[] | select(.name == "iPhone 17" and .isAvailable)]
+            | last | .udid')"
+          trap 'xcrun simctl shutdown "$sim" || true' EXIT
+          xcrun simctl bootstatus "$sim" -b
+          python3 scripts/smoke-hl2-dedicated.py "$sim" build/hl2/runtime

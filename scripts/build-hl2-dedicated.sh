@@ -26,4 +26,9 @@ if ! python3 waf configure -T release --dedicated --ios-dedicated --build-games 
   tail -n 70 "$output/objects/config.log" >&2
   exit 1
 fi
-python3 waf install --keep -j "$(sysctl -n hw.logicalcpu)"
+log="$output/build.log"
+if ! python3 waf install -kk -j "$(sysctl -n hw.logicalcpu)" > "$log" 2>&1; then
+  sed -E '/^\[[[:space:]0-9]+\/[[:space:]0-9]+\]/d; /^\+ install /d' "$log" >&2
+  exit 1
+fi
+tail -n 2 "$log"
