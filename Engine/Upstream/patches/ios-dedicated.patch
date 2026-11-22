@@ -1,0 +1,145 @@
+diff --git a/appframework/wscript b/appframework/wscript
+index f8ded31..0c672b7 100755
+--- a/appframework/wscript
++++ b/appframework/wscript
+@@ -50,7 +50,7 @@ def build(bld):
+ 
+ 	libs = []
+ 
+-	if bld.env.DEST_OS == 'darwin':
++	if bld.env.DEST_OS == 'darwin' and not bld.env.IOS_DEDICATED:
+ 		libs += ['FOUNDATION', 'APPKIT', 'IOKIT']
+ 
+ 	bld.stlib(
+diff --git a/dedicated/console/TextConsoleUnix.cpp b/dedicated/console/TextConsoleUnix.cpp
+index 108d38b..91ddeed 100644
+--- a/dedicated/console/TextConsoleUnix.cpp
++++ b/dedicated/console/TextConsoleUnix.cpp
+@@ -17,7 +17,9 @@
+ #include "tier0/icommandline.h"
+ #include "tier1/utllinkedlist.h"
+ #include "filesystem.h"
++#ifndef SOURCE_IOS_DEDICATED
+ #include "../thirdparty/libedit-3.1/src/histedit.h"
++#endif
+ #include "tier0/vprof.h"
+ 
+ #define CONSOLE_LOG_FILE "console.log"
+@@ -27,6 +29,7 @@ static pthread_t g_threadid = (pthread_t)-1;
+ CUtlLinkedList< CUtlString > g_Commands;
+ static volatile int g_ProcessingCommands = false;
+ 
++#ifndef SOURCE_IOS_DEDICATED
+ #if defined( LINUX )
+ 
+ // Dynamically load the libtinfo stuff. On servers without a tty attached,
+@@ -161,6 +164,7 @@ static void editline_cleanup_handler( void *arg )
+ 		el_end( el );
+ 	}
+ }
++#endif
+ 
+ static bool add_command( const char *cmd, int cmd_len )
+ {
+@@ -198,6 +202,7 @@ static bool add_command( const char *cmd, int cmd_len )
+ 	return false;
+ }
+ 
++#ifndef SOURCE_IOS_DEDICATED
+ static void *editline_threadproc( void *arg )
+ {
+ 	HistEvent ev;
+@@ -261,11 +266,10 @@ static void *editline_threadproc( void *arg )
+ 	el_end( el );
+ 	return NULL;
+ }
++#endif
+ 
+ static void *fgets_threadproc( void *arg )
+ {
+-	pthread_cleanup_push( editline_cleanup_handler, NULL );
+-
+ 	while ( g_threadid != (pthread_t)-1 )
+ 	{
+ 		char cmd[ 512 ];
+@@ -275,9 +279,10 @@ static void *fgets_threadproc( void *arg )
+ 			cmd[ sizeof(cmd) - 1 ] = 0;
+ 			add_command( cmd, strlen( cmd ) );
+ 		}
++		else
++			break;
+ 	}
+ 
+-	pthread_cleanup_pop( 0 );
+ 	return NULL;
+ }
+ 
+@@ -295,6 +300,10 @@ bool CTextConsoleUnix::Init()
+ 	//   (which is != STDOUT)
+ 	if ( isatty( STDIN_FILENO ) )
+ 	{
++		void *(*terminal_threadproc) (void *) = fgets_threadproc;
++#ifdef SOURCE_IOS_DEDICATED
++		m_tty = stdout;
++#else
+ 		const char *termid_str = ctermid( NULL );
+ 
+ 		m_tty = fopen( termid_str, "w+" );
+@@ -304,9 +313,9 @@ bool CTextConsoleUnix::Init()
+ 			m_tty = stdout;
+ 		}
+ 
+-		void *(*terminal_threadproc) (void *) = editline_threadproc;
+-		if ( !init_tinfo_functions() )
+-			terminal_threadproc = fgets_threadproc;
++		if ( init_tinfo_functions() )
++			terminal_threadproc = editline_threadproc;
++#endif
+ 
+ 		if ( pthread_create( &g_threadid, NULL, terminal_threadproc, (void *)m_tty ) != 0 )
+ 		{
+diff --git a/wscript b/wscript
+index 16f2263..bbab468 100644
+--- a/wscript
++++ b/wscript
+@@ -291,6 +291,9 @@ def options(opt):
+ 	grp.add_option('-d', '--dedicated', action = 'store_true', dest = 'DEDICATED', default = False,
+ 		help = 'build dedicated server [default: %default]')
+ 
++	grp.add_option('--ios-dedicated', action = 'store_true', dest = 'IOS_DEDICATED', default = False,
++		help = 'build the dedicated engine using an iOS SDK and Clang target')
++
+ 	grp.add_option('--tests', action = 'store_true', dest = 'TESTS', default = False,
+ 		help = 'build unit tests [default: %default]')
+ 
+@@ -383,6 +386,10 @@ def check_deps(conf):
+ 	if conf.options.TESTS:
+ 		return
+ 
++	if conf.env.IOS_DEDICATED:
++		conf.check_cc(lib='z', uselib_store='ZLIB', define_name='HAVE_ZLIB')
++		return
++
+ 	if conf.env.DEST_OS != 'android':
+ 		if conf.env.DEST_OS != 'win32':
+ 			if conf.options.SDL:
+@@ -447,6 +454,19 @@ def configure(conf):
+ 	if sys.platform == 'win32':
+ 		conf.load('msvc_pdb_ext msdev msvs msvcdeps')
+ 	conf.load('subproject xcompile compiler_c compiler_cxx gccdeps gitversion clang_compilation_database strip_on_install_v2 waf_unit_test enforce_pic')
++	conf.env.IOS_DEDICATED = conf.options.IOS_DEDICATED
++	if conf.env.IOS_DEDICATED:
++		if not conf.options.DEDICATED or conf.options.TESTS or conf.env.DEST_OS != 'darwin':
++			conf.fatal('--ios-dedicated requires --dedicated and an iOS Apple Clang target')
++		conf.check_cxx(fragment='''
++			#include <TargetConditionals.h>
++			#if !TARGET_OS_IOS || !defined(__aarch64__)
++			#error Expected iOS arm64
++			#endif
++			int main() { return 0; }
++		''', msg='Checking iOS arm64 target')
++		conf.env.append_unique('DEFINES', 'SOURCE_IOS_DEDICATED=1')
++		conf.env.append_unique('LINKFLAGS', '-Wl,-rpath,@loader_path')
+ 	if conf.env.DEST_OS == 'win32' and conf.env.DEST_CPU == 'amd64':
+ 		conf.load('masm')
+ 	elif conf.env.DEST_OS == 'darwin':

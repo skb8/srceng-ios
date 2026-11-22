@@ -1,0 +1,49 @@
+name: Half-Life 2 native engine
+
+on:
+  push:
+    paths:
+      - ".github/workflows/hl2-engine.yml"
+      - "Engine/Upstream/revision"
+      - "Engine/Upstream/patches/**"
+      - "scripts/build-hl2-dedicated.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/hl2-engine.yml"
+      - "Engine/Upstream/revision"
+      - "Engine/Upstream/patches/**"
+      - "scripts/build-hl2-dedicated.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dedicated:
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [iphoneos, iphonesimulator]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Fetch the pinned engine and its source dependencies
+        run: |
+          revision="$(cat Engine/Upstream/revision)"
+          git init build/upstream
+          git -C build/upstream fetch --depth 1 https://github.com/nillerusr/source-engine.git "$revision"
+          git -C build/upstream checkout --detach FETCH_HEAD
+          git -C build/upstream submodule update --init --depth 1 thirdparty ivp
+      - name: Apply iOS and filesystem changes
+        run: |
+          git -C build/upstream apply "$PWD/Engine/Upstream/patches/ios-dedicated.patch"
+          git -C build/upstream apply "$PWD/Engine/Upstream/patches/vpk-embedded-offset.patch"
+      - name: Build the dedicated engine and HL2 server
+        run: |
+          bash scripts/build-hl2-dedicated.sh build/upstream build/hl2 '${{ matrix.sdk }}'
+          xcrun lipo build/hl2/runtime/dedicated_launcher -verify_arch arm64
+          xcrun lipo build/hl2/runtime/bin/libengine.dylib -verify_arch arm64
+          xcrun lipo build/hl2/runtime/hl2/bin/libserver.dylib -verify_arch arm64
