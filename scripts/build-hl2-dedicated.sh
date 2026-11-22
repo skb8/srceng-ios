@@ -21,6 +21,9 @@ export CXXFLAGS="$CFLAGS"
 export LDFLAGS="$CFLAGS"
 
 cd "$source_dir"
-python3 waf configure --dedicated --ios-dedicated --build-games hl2 --disable-warns \
-  --out="$output/objects" --prefix="$output/runtime"
+if ! python3 waf configure -T release --dedicated --ios-dedicated --build-games hl2 --disable-warns \
+  --out="$output/objects" --prefix="$output/runtime"; then
+  tail -n 70 "$output/objects/config.log" >&2
+  exit 1
+fi
 python3 waf install -j "$(sysctl -n hw.logicalcpu)"
