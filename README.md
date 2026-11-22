@@ -13,7 +13,9 @@ scripts/build-ios.sh iphoneos
 scripts/build-ios.sh iphonesimulator
 ```
 
-[GitHub Actions](https://github.com/skb8/srceng-ios/actions/workflows/ios.yml) собирает оба варианта. Архив для iPhone и iPad содержит неподписанный `.app`. Для установки на устройство откройте сгенерированный `SourceIOS.xcodeproj`, выберите свою команду подписи и при необходимости задайте свой Bundle Identifier. Для симулятора используйте архив `iphonesimulator`.
+[GitHub Actions](https://github.com/skb8/srceng-ios/actions/workflows/ios.yml) собирает оба варианта. Для iPhone или iPad скачайте артефакт `SourceIOS-unsigned-ipa` и извлеките `SourceIOS-unsigned.ipa`. IPA требует подписи перед установкой. В AltStore Classic откройте «My Apps», нажмите «+» и выберите IPA для подписи и установки.
+
+Для установки из Xcode откройте сгенерированный `SourceIOS.xcodeproj` и выберите свою команду подписи. Для симулятора используйте архив `SourceIOS-iphonesimulator-unsigned`.
 
 ## Файлы игры и управление
 

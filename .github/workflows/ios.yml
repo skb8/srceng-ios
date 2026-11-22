@@ -40,6 +40,26 @@ jobs:
           xcrun lipo "$app/SourceIOS" -verify_arch arm64
           mkdir -p artifacts
           ditto -c -k --keepParent "$app" "artifacts/SourceIOS-$SDK-unsigned.zip"
+      - name: Package unsigned device IPA
+        if: matrix.sdk == 'iphoneos'
+        run: |
+          app="build/$SDK/Build/Products/Release-$SDK/SourceIOS.app"
+          ipa="artifacts/SourceIOS-unsigned.ipa"
+          staging="$(mktemp -d)"
+          trap 'rm -rf "$staging"' EXIT
+          mkdir "$staging/Payload"
+          ditto "$app" "$staging/Payload/SourceIOS.app"
+          ditto -c -k --keepParent "$staging/Payload" "$ipa"
+          unzip -tq "$ipa"
+          for file in Info.plist SourceIOS default.metallib; do
+            unzip -p "$ipa" "Payload/SourceIOS.app/$file" >/dev/null
+          done
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: matrix.sdk == 'iphoneos'
+        with:
+          name: SourceIOS-unsigned-ipa
+          path: artifacts/SourceIOS-unsigned.ipa
+          if-no-files-found: error
       - name: Launch app in iOS Simulator
         if: matrix.sdk == 'iphonesimulator'
         timeout-minutes: 6
