@@ -78,9 +78,9 @@ final class TouchOverlay: UIView {
     }
 
     func reset() {
-        let held = input.held
+        let released = input.released.union(input.held)
         input = SourceInput()
-        input.released = held
+        input.released = released
         stick.reset()
         for recognizer in lookPad.gestureRecognizers ?? [] {
             recognizer.isEnabled = false

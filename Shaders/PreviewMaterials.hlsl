@@ -42,3 +42,9 @@ float4 fragmentMain(VertexOutput input) : SV_Target0
     float3 lighting = lightTexture.Sample(materialSampler, input.lightUV).rgb;
     return float4(base.rgb * lighting * tint.rgb, base.a);
 }
+
+// UnlitGeneric's base-texture modulation, with no shader-side sRGB conversion.
+float4 unlitMain(VertexOutput input) : SV_Target0
+{
+    return baseTexture.Sample(materialSampler, input.uv) * tint;
+}

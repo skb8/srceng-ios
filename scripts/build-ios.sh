@@ -11,10 +11,7 @@ case "$sdk" in
 esac
 if (( $# > 0 )); then shift; fi
 
-shader_dir="$repo/build/$sdk/shaders"
-scripts/compile-shaders.sh "$shader_dir" "$sdk"
-mkdir -p App/Generated
-cp "$shader_dir/LightmappedPreview.metallib" App/Generated/
+scripts/compile-shaders.sh App/Generated
 xcodegen generate --spec project.yml
 xcodebuild -project SourceIOS.xcodeproj -scheme SourceIOS -configuration Release \
   -sdk "$sdk" -destination "$destination" -derivedDataPath "$repo/build/$sdk" \

@@ -63,9 +63,9 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
         super.viewDidLoad()
         surface.delegate = self
         NotificationCenter.default.addObserver(self, selector: #selector(suspend),
-                                               name: UIApplication.willResignActiveNotification, object: nil)
+                                               name: UIScene.willDeactivateNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(resume),
-                                               name: UIApplication.didBecomeActiveNotification, object: nil)
+                                               name: UIScene.didActivateNotification, object: nil)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -99,7 +99,7 @@ final class PlayViewController: UIViewController, MTKViewDelegate {
     }
 
     @objc private func resume() {
-        guard viewIfLoaded?.window != nil, UIApplication.shared.applicationState == .active else { return }
+        guard viewIfLoaded?.window?.windowScene?.activationState == .foregroundActive else { return }
         session?.setSuspended(false)
         surface.isPaused = false
     }

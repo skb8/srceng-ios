@@ -13,7 +13,8 @@ final class MetalPreview {
     }
 
     private let queue: MTLCommandQueue
-    private let pipeline: MTLRenderPipelineState
+    private let lightmappedPipeline: MTLRenderPipelineState
+    private let unlitPipeline: MTLRenderPipelineState
     private let depth: MTLDepthStencilState
     private let vertices: MTLBuffer
     private let indices: MTLBuffer
@@ -22,20 +23,19 @@ final class MetalPreview {
     private let sampler: MTLSamplerState
     private var position = SIMD2<Float>.zero
     private var rotation: Float = 0
+    private var lightmapping = true
     private var lastFrame: CFTimeInterval?
 
     init(view: MTKView) throws {
-        guard let device = view.device,
-              let queue = device.makeCommandQueue(),
-              let libraryURL = Bundle.main.url(forResource: "LightmappedPreview",
-                                               withExtension: "metallib") else {
+        guard let device = view.device, let queue = device.makeCommandQueue() else {
             throw PreviewError.resources
         }
         self.queue = queue
 
-        let library = try device.makeLibrary(URL: libraryURL)
+        let library = try device.makeDefaultLibrary(bundle: .main)
         guard let vertex = library.makeFunction(name: "lightmappedVertex"),
-              let fragment = library.makeFunction(name: "lightmappedFragment") else {
+              let lightmapped = library.makeFunction(name: "lightmappedFragment"),
+              let unlit = library.makeFunction(name: "unlitFragment") else {
             throw PreviewError.resources
         }
 
@@ -49,12 +49,14 @@ final class MetalPreview {
 
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = vertex
-        descriptor.fragmentFunction = fragment
         descriptor.vertexDescriptor = layout
         descriptor.colorAttachments[0].pixelFormat = view.colorPixelFormat
         descriptor.depthAttachmentPixelFormat = view.depthStencilPixelFormat
         descriptor.rasterSampleCount = view.sampleCount
-        pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+        descriptor.fragmentFunction = lightmapped
+        lightmappedPipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+        descriptor.fragmentFunction = unlit
+        unlitPipeline = try device.makeRenderPipelineState(descriptor: descriptor)
 
         let depthDescriptor = MTLDepthStencilDescriptor()
         depthDescriptor.depthCompareFunction = .lessEqual
@@ -101,6 +103,8 @@ final class MetalPreview {
         position.y = max(-0.7, min(0.7, position.y + input.moveForward * delta))
         rotation = (rotation + input.lookRight * 3 + input.lookDown).truncatingRemainder(dividingBy: 2 * .pi)
 
+        if input.pressed.contains(.use) { lightmapping.toggle() }
+
         let size = view.drawableSize
         guard size.width > 0, size.height > 0,
               let pass = view.currentRenderPassDescriptor,
@@ -113,13 +117,13 @@ final class MetalPreview {
             tint: input.held.contains(.attack) || input.pressed.contains(.attack)
                 ? [1.3, 1.1, 0.7, 1] : [1, 1, 1, 1]
         )
-        encoder.setRenderPipelineState(pipeline)
+        encoder.setRenderPipelineState(lightmapping ? lightmappedPipeline : unlitPipeline)
         encoder.setDepthStencilState(depth)
         encoder.setVertexBuffer(vertices, offset: 0, index: 0)
         encoder.setVertexBytes(&constants, length: MemoryLayout<Constants>.stride, index: 3)
         encoder.setFragmentBytes(&constants, length: MemoryLayout<Constants>.stride, index: 3)
         encoder.setFragmentTexture(baseTexture, index: 0)
-        encoder.setFragmentTexture(lightTexture, index: 1)
+        if lightmapping { encoder.setFragmentTexture(lightTexture, index: 1) }
         encoder.setFragmentSamplerState(sampler, index: 2)
         encoder.drawIndexedPrimitives(type: .triangle, indexCount: 6, indexType: .uint16,
                                       indexBuffer: indices, indexBufferOffset: 0)

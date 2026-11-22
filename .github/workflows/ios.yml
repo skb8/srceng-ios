@@ -36,10 +36,24 @@ jobs:
         run: |
           app="build/$SDK/Build/Products/Release-$SDK/SourceIOS.app"
           test -x "$app/SourceIOS"
-          test -s "$app/LightmappedPreview.metallib"
+          test -s "$app/default.metallib"
           xcrun lipo "$app/SourceIOS" -verify_arch arm64
           mkdir -p artifacts
           ditto -c -k --keepParent "$app" "artifacts/SourceIOS-$SDK-unsigned.zip"
+      - name: Launch app in iOS Simulator
+        if: matrix.sdk == 'iphonesimulator'
+        timeout-minutes: 6
+        run: |
+          sim="$(xcrun simctl list -j devices available | jq -er '
+            [.devices | to_entries | sort_by(.key) | .[]
+              | select(.key | startswith("com.apple.CoreSimulator.SimRuntime.iOS-"))
+              | .value[] | select(.name == "iPhone 17" and .isAvailable)]
+            | last | .udid')"
+          trap 'xcrun simctl shutdown "$sim" || true' EXIT
+          xcrun simctl bootstatus "$sim" -b
+          app="build/$SDK/Build/Products/Release-$SDK/SourceIOS.app"
+          xcrun simctl install "$sim" "$app"
+          xcrun simctl launch "$sim" io.github.skb8.srceng
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: SourceIOS-${{ matrix.sdk }}-unsigned
