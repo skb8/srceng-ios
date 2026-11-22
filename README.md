@@ -43,7 +43,9 @@ scripts/build-ios.sh iphonesimulator
 
 [Workflow Half-Life 2 native engine](https://github.com/skb8/srceng-ios/actions/workflows/hl2-engine.yml) собирает штатный выделенный хост Source, VPhysics и игровые модули HL2 (`libserver.dylib` и `libclient.dylib`) для iPhone и симулятора arm64. На симуляторе выделенный хост загружает сервер HL2 с синтетическим `gameinfo.txt`, выполняет `echo` и завершается по `quit`. Вторая проверка загружает `libclient.dylib` и запрашивает `VClient017` через штатную `CreateInterface`.
 
-Для запуска кампании из приложения ещё нужны клиентский режим `libengine.dylib`, игровой рендер на Metal и подключение движка к циклу кадров iOS.
+[Workflow Half-Life 2 client host](https://github.com/skb8/srceng-ios/actions/workflows/hl2-client-host.yml) собирает клиентский `libengine.dylib`, `libioswindow.dylib` и игровые модули HL2 с одним набором интерфейсов SDL. `SourceIOSClientHost001` даёт лаунчеру отдельные вызовы запуска, кадра и завершения. Кадр пропускается, если ограничитель частоты ещё не разрешает его обработку. Модуль окна создаёт `CAMetalLayer` через SDL и выдаёт его через `SourceIOSMetalSurface001`.
+
+Симулятор загружает модули и проверяет их интерфейсы через `CreateInterface`. Проверочное приложение также создаёт окно Source и показывает один кадр Metal с заливкой. Для кампании нужно подключить эти компоненты к лаунчеру, собрать клиентские системы, включая VGUI, и реализовать отрисовку игровой геометрии и материалов с шейдерами на Metal.
 
 Ветка [`ios` форка](https://github.com/nillerusr/source-engine/tree/79c3bc86bdc61b75d402514ee2f372753d1732bf) содержит изменения для Apple-платформ. В Waf эта ревизия использует профиль Darwin с AppKit, Carbon и OpenGL. В исходных путях рендера `materialsystem/shaderapidx9` отправляет D3D9-вызовы в `togl`, где байткод DX9 транслируется в GLSL. `launcher/launcher.cpp` и `engine/sys_dll2.cpp` владеют циклом запуска и кадров.
 
