@@ -1,3 +1,39 @@
+--- a/appframework/AppSystemGroup.cpp
++++ b/appframework/AppSystemGroup.cpp
+@@ -284,6 +284,10 @@
+ 		if (!sys->Connect( GetFactory() ))
+ 		{
+ 			ReportStartupFailure( CONNECTION, i );
++#if defined( SOURCE_IOS_CLIENT_HOST )
++			while ( i > 0 )
++				m_Systems[--i]->Disconnect();
++#endif
+ 			return false;
+ 		}
+ 	}
+@@ -311,6 +315,10 @@
+ 		if ( nRetVal != INIT_OK )
+ 		{
+ 			ReportStartupFailure( INITIALIZATION, i );
++#if defined( SOURCE_IOS_CLIENT_HOST )
++			while ( i > 0 )
++				m_Systems[--i]->Shutdown();
++#endif
+ 			return nRetVal;
+ 		}
+ 	}
+@@ -399,7 +407,10 @@
+ 
+ void CAppSystemGroup::Shutdown()
+ {
+-	return OnShutdown();
++	OnShutdown();
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	s_pCurrentAppSystem = GetParent();
++#endif
+ }
+ 
+ 
 --- a/appframework/wscript
 +++ b/appframework/wscript
 @@ -20,7 +20,7 @@
@@ -60,6 +96,325 @@
  #include <Carbon/Carbon.h>
  #endif
  #include <sys/types.h>
+--- a/engine/sys_dll2.cpp
++++ b/engine/sys_dll2.cpp
+@@ -29,6 +29,9 @@
+ #include "quakedef.h"
+ #include "idedicatedexports.h"
+ #include "engine_launcher_api.h"
++#if defined( SOURCE_IOS_CLIENT_HOST )
++#include "engine/ios_client_host.h"
++#endif
+ #include "ivideomode.h"
+ #include "common.h"
+ #include "iregistry.h"
+@@ -918,6 +921,9 @@
+ //
+ //-----------------------------------------------------------------------------
+ class CEngineAPI : public CTier3AppSystem< IEngineAPI >
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	, public ISourceIOSClientHost
++#endif
+ {
+ 	typedef CTier3AppSystem< IEngineAPI > BaseClass;
+ 
+@@ -952,6 +958,12 @@
+ 
+ 	int RunListenServer();
+ 
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	bool Start() override;
++	bool RunFrame() override;
++	void Stop() override;
++#endif
++
+ private:
+ 
+ 	// Hooks a particular mod up to the registry
+@@ -991,6 +1003,12 @@
+ 	bool m_bRunningSimulation;
+ 	bool m_bSupportsVR;
+ 	StartupInfo_t m_StartupInfo;
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	CModAppSystemGroup *m_pIOSModGroup = NULL;
++	CreateInterfaceFn m_pIOSParentFactory = NULL;
++	bool m_bIOSStartupReady = false;
++	bool m_bIOSSimulationLoaded = false;
++#endif
+ };
+ 
+ 
+@@ -999,6 +1017,9 @@
+ //-----------------------------------------------------------------------------
+ static CEngineAPI s_EngineAPI;
+ EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CEngineAPI, IEngineAPI, VENGINE_LAUNCHER_API_VERSION, s_EngineAPI );
++#if defined( SOURCE_IOS_CLIENT_HOST )
++EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CEngineAPI, ISourceIOSClientHost, SOURCE_IOS_CLIENT_HOST_VERSION, s_EngineAPI );
++#endif
+ 
+ 
+ //-----------------------------------------------------------------------------
+@@ -1039,6 +1060,13 @@
+ 
+ #if defined( USE_SDL )
+ 	g_pLauncherMgr = (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, NULL );
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	if ( !g_pLauncherMgr )
++	{
++		Warning( "Source requires an iOS launcher window manager.\n" );
++		return false;
++	}
++#endif
+ #endif
+ 	
+ 	ConnectMDLCacheNotify();
+@@ -1201,11 +1229,18 @@
+ 		return HandleSetModeError();
+ 	}
+ 
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	m_bIOSStartupReady = true;
++#endif
++
+ 	return INIT_OK; 
+ }
+ 
+ void CEngineAPI::Shutdown() 
+ {
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	Stop();
++#endif
+ 	VideoMode_Destroy();
+ 	BaseClass::Shutdown();
+ }
+@@ -1677,6 +1712,9 @@
+ //-----------------------------------------------------------------------------
+ void CEngineAPI::OnShutdown()
+ {
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	m_bIOSStartupReady = false;
++#endif
+ 	if ( videomode )
+ 	{
+ 		videomode->Shutdown();
+@@ -1833,6 +1871,84 @@
+ 
+ 	return nRunResult;
+ }
++
++#if defined( SOURCE_IOS_CLIENT_HOST )
++void Engine_RunFrameWithoutWait();
++void SV_ShutdownGameDLL();
++
++bool CEngineAPI::Start()
++{
++	if ( !m_bIOSStartupReady || m_pIOSModGroup || InEditMode() )
++		return false;
++
++	if ( !ModInit( m_StartupInfo.m_pInitialMod, m_StartupInfo.m_pInitialGame ) )
++	{
++		ModShutdown();
++		OnShutdown();
++		return false;
++	}
++
++	m_pIOSModGroup = new CModAppSystemGroup( false, m_StartupInfo.m_pParentAppSystemGroup );
++	m_pIOSParentFactory = g_AppSystemFactory;
++	g_AppSystemFactory = m_pIOSModGroup->GetFactory();
++	if ( m_pIOSModGroup->Startup() != INIT_OK )
++	{
++		Stop();
++		return false;
++	}
++
++	eng->SetQuitting( IEngine::QUIT_NOTQUITTING );
++	if ( !eng->Load( false, host_parms.basedir ) )
++	{
++		Stop();
++		return false;
++	}
++
++	toolframework->ServerInit( g_ServerFactory );
++	m_bIOSSimulationLoaded = true;
++	return true;
++}
++
++bool CEngineAPI::RunFrame()
++{
++	if ( !m_bIOSSimulationLoaded || eng->GetQuitting() != IEngine::QUIT_NOTQUITTING )
++		return false;
++
++	PumpMessages();
++	if ( eng->GetQuitting() != IEngine::QUIT_NOTQUITTING )
++		return false;
++
++	VCRSyncToken( "Frame" );
++	Engine_RunFrameWithoutWait();
++	return eng->GetQuitting() == IEngine::QUIT_NOTQUITTING;
++}
++
++void CEngineAPI::Stop()
++{
++	if ( !m_bIOSStartupReady )
++		return;
++
++	if ( m_pIOSModGroup )
++	{
++		if ( m_bIOSSimulationLoaded )
++		{
++			m_bIOSSimulationLoaded = false;
++			eng->Unload();
++			toolframework->ServerShutdown();
++			SV_ShutdownGameDLL();
++		}
++
++		m_pIOSModGroup->Shutdown();
++		delete m_pIOSModGroup;
++		m_pIOSModGroup = NULL;
++		g_AppSystemFactory = m_pIOSParentFactory;
++		ModShutdown();
++		videomode->SetGameWindow( NULL );
++	}
++
++	OnShutdown();
++}
++#endif
+ 
+ static void StaticRunListenServer( void *arg )
+ {
+--- a/engine/sys_engine.cpp
++++ b/engine/sys_engine.cpp
+@@ -129,6 +129,9 @@
+ 	virtual void	SetNextState( EngineState_t iNextState );
+ 
+ 	void			Frame( void );
++#if defined( SOURCE_IOS_CLIENT_HOST )
++	void			FrameWithoutWait() { FrameWithTiming( false ); }
++#endif
+ 
+ 	float			GetFrameTime( void );
+ 	float			GetCurTime( void );
+@@ -144,6 +147,7 @@
+ 	void			SetQuitting( int quittype );
+ 
+ private:
++	void			FrameWithTiming( bool waitForFrame );
+ 	bool			FilterTime( float t );
+ 
+ 	int				m_nQuitting;
+@@ -165,6 +169,13 @@
+ IEngine *eng = ( IEngine * )&g_Engine;
+ //IEngineAPI *engine = NULL;
+ 
++#if defined( SOURCE_IOS_CLIENT_HOST )
++void Engine_RunFrameWithoutWait()
++{
++	g_Engine.FrameWithoutWait();
++}
++#endif
++
+ 
+ //-----------------------------------------------------------------------------
+ // Purpose: Constructor
+@@ -289,9 +300,14 @@
+ //-----------------------------------------------------------------------------
+ void CEngine::Frame( void )
+ {
++	FrameWithTiming( true );
++}
++
++void CEngine::FrameWithTiming( bool waitForFrame )
++{
+ 	// yield the CPU for a little while when paused, minimized, or not the focus
+ 	// FIXME:  Move this to main windows message pump?
+-	if ( IsPC() && !game->IsActiveApp() && !sv.IsDedicated() && engine_no_focus_sleep.GetInt() > 0 )
++	if ( waitForFrame && IsPC() && !game->IsActiveApp() && !sv.IsDedicated() && engine_no_focus_sleep.GetInt() > 0 )
+ 	{
+ 		VPROF_BUDGET( "Sleep", VPROF_BUDGETGROUP_SLEEPING );
+ #if defined( RAD_TELEMETRY_ENABLED )
+@@ -341,6 +357,8 @@
+ 			// Time to render our frame.
+ 			break;
+ 		}
++		if ( !waitForFrame )
++			return;
+ 
+ 		if ( IsPC() && ( !sv.IsDedicated() || host_timer_spin_ms.GetFloat() != 0 ) )
+ 		{
+--- a/engine/sys_getmodes.cpp
++++ b/engine/sys_getmodes.cpp
+@@ -1160,18 +1160,6 @@
+ #define BI_RLE4       2L
+ #define BI_BITFIELDS  3L
+ 
+-#if 0
+-typedef struct _GUID
+-{
+-    unsigned long Data1;
+-    unsigned short Data2;
+-    unsigned short Data3;
+-    unsigned char Data4[8];
+-} GUID;
+-
+-#endif
+-typedef GUID UUID;
+-
+ #endif //WIN32
+ //-----------------------------------------------------------------------------
+ // Purpose: Blits an image to the loading window hdc
+@@ -1369,13 +1357,16 @@
+ 	// Use Change Display Settings to go full screen
+ 	ChangeDisplaySettingsToFullscreen( nWidth, nHeight, nBPP );
+ 
++	int windowWidth = nWidth;
++	int windowHeight = nHeight;
++
++#ifndef USE_SDL
+ 	RECT WindowRect;
+ 	WindowRect.top      = 0;
+ 	WindowRect.left     = 0;
+ 	WindowRect.right    = nWidth;
+ 	WindowRect.bottom   = nHeight;
+ 
+-#ifndef USE_SDL
+ #ifndef _X360
+ 	// Get window style
+ 	DWORD style = GetWindowLong( (HWND)game->GetMainWindow(), GWL_STYLE );
+@@ -1432,25 +1423,22 @@
+ #endif
+ 
+ 	// Move the window to 0, 0 and the new true size
++	windowWidth = WindowRect.right - WindowRect.left;
++	windowHeight = WindowRect.bottom - WindowRect.top;
+ 	SetWindowPos( (HWND)game->GetMainWindow(),
+ 		hWndAfter,
+-		0, 0, WindowRect.right - WindowRect.left,
+-		WindowRect.bottom - WindowRect.top,
++		0, 0, windowWidth, windowHeight,
+ 		SWP_NOREDRAW | dwSwpFlags );
+ #endif // !USE_SDL
+ 
+ 	// Now center
+-	CenterEngineWindow( game->GetMainWindow(),
+-		WindowRect.right - WindowRect.left,
+-		WindowRect.bottom - WindowRect.top );
++	CenterEngineWindow( game->GetMainWindow(), windowWidth, windowHeight );
+ #if defined( USE_SDL )
+-	g_pLauncherMgr->SetWindowFullScreen( !bWindowed, WindowRect.right - WindowRect.left, WindowRect.bottom - WindowRect.top );
+-
+-	CenterEngineWindow( game->GetMainWindow(),
+-		WindowRect.right - WindowRect.left,
+-		WindowRect.bottom - WindowRect.top );
+-
+-	g_pLauncherMgr->SizeWindow( WindowRect.right - WindowRect.left, WindowRect.bottom - WindowRect.top );
++	g_pLauncherMgr->SetWindowFullScreen( !bWindowed, windowWidth, windowHeight );
++
++	CenterEngineWindow( game->GetMainWindow(), windowWidth, windowHeight );
++
++	g_pLauncherMgr->SizeWindow( windowWidth, windowHeight );
+ 
+ 	if( bWindowed )
+ 	{
 --- a/engine/sys_mainwind.cpp
 +++ b/engine/sys_mainwind.cpp
 @@ -8,7 +8,7 @@
@@ -71,6 +426,15 @@
  #define DONT_DEFINE_BOOL
  #include <objc/message.h>
  #endif
+@@ -1548,7 +1548,7 @@
+ 
+ void *CGame::GetMainDeviceWindow( void )
+ {
+-#if defined( DX_TO_GL_ABSTRACTION ) && defined( USE_SDL )
++#if defined( USE_SDL ) && ( defined( DX_TO_GL_ABSTRACTION ) || defined( SOURCE_IOS_CLIENT_HOST ) )
+ 	return (void*)m_pSDLWindow;
+ #else
+ 	return (void*)m_hWindow;
 @@ -1568,7 +1568,9 @@
  		return NULL;
  	}
@@ -138,6 +502,28 @@
  		libs += ['APPKIT', 'COREAUDIO', 'AUDIOTOOLBOX', 'SYSTEMCONFIGURATION']
  		
  	install_path = bld.env.LIBDIR
+--- /dev/null
++++ b/public/engine/ios_client_host.h
+@@ -0,0 +1,19 @@
++#ifndef SOURCE_IOS_CLIENT_HOST_H
++#define SOURCE_IOS_CLIENT_HOST_H
++
++#include "tier1/interface.h"
++
++#define SOURCE_IOS_CLIENT_HOST_VERSION "SourceIOSClientHost001"
++
++// Call on the main thread after the parent app systems have initialized IEngineAPI.
++class ISourceIOSClientHost : public IBaseInterface
++{
++public:
++	virtual bool Start() = 0;
++	// Runs at most one Source frame and returns false when the engine requests exit.
++	virtual bool RunFrame() = 0;
++	// Call before shutting down the parent app systems.
++	virtual void Stop() = 0;
++};
++
++#endif
 --- a/vgui2/vgui_controls/FileOpenDialog.cpp
 +++ b/vgui2/vgui_controls/FileOpenDialog.cpp
 @@ -862,7 +862,7 @@

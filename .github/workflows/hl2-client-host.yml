@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/hl2-client-host.yml"
       - "Engine/Upstream/ports/**"
+      - "Engine/Upstream/ClientHostProbe.cpp"
       - "Engine/Upstream/revision"
       - "Engine/Upstream/patches/**"
       - "scripts/build-hl2-client-host.sh"
@@ -12,6 +13,7 @@ on:
     paths:
       - ".github/workflows/hl2-client-host.yml"
       - "Engine/Upstream/ports/**"
+      - "Engine/Upstream/ClientHostProbe.cpp"
       - "Engine/Upstream/revision"
       - "Engine/Upstream/patches/**"
       - "scripts/build-hl2-client-host.sh"
@@ -55,3 +57,23 @@ jobs:
         run: |
           bash scripts/build-hl2-client-host.sh build/upstream build/sdl build/client-host '${{ matrix.sdk }}'
           xcrun lipo build/client-host/runtime/bin/libengine.dylib -verify_arch arm64
+      - name: Load the client host and check the frame interface on Simulator
+        if: matrix.sdk == 'iphonesimulator'
+        timeout-minutes: 10
+        run: |
+          runtime="$PWD/build/client-host/runtime"
+          xcrun --sdk iphonesimulator clang++ -std=c++11 \
+            -target arm64-apple-ios17.0-simulator \
+            -isysroot "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
+            -DOSX=1 -D_OSX=1 -DPOSIX=1 -D_POSIX=1 -DPLATFORM_POSIX=1 \
+            -DGNUC=1 -DPLATFORM_64BITS=1 -DNDEBUG=1 \
+            -Ibuild/upstream/public -Ibuild/upstream/common \
+            Engine/Upstream/ClientHostProbe.cpp -o "$runtime/source-client-host-probe"
+          sim="$(xcrun simctl list -j devices available | jq -er '
+            [.devices | to_entries | sort_by(.key) | .[]
+              | select(.key | startswith("com.apple.CoreSimulator.SimRuntime.iOS-"))
+              | .value[] | select(.name == "iPhone 17" and .isAvailable)]
+            | last | .udid')"
+          trap 'xcrun simctl shutdown "$sim" || true' EXIT
+          xcrun simctl bootstatus "$sim" -b
+          xcrun simctl spawn "$sim" "$runtime/source-client-host-probe" "$runtime/bin/libengine.dylib"
