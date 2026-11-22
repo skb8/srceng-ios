@@ -19,6 +19,7 @@ targets:
         excludes: [Info.plist, Generated]
       - path: App/Generated
       - path: Engine
+        excludes: [Upstream]
     dependencies:
       - sdk: MetalKit.framework
     settings:

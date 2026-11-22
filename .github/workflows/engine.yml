@@ -1,0 +1,37 @@
+name: Source Engine arm64 libraries
+
+on:
+  push:
+    paths:
+      - ".github/workflows/engine.yml"
+      - "Engine/Upstream/**"
+      - "scripts/build-engine-libs.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/engine.yml"
+      - "Engine/Upstream/**"
+      - "scripts/build-engine-libs.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  libraries:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Fetch pinned Source Engine
+        run: |
+          revision="$(cat Engine/Upstream/revision)"
+          git init build/upstream
+          git -C build/upstream fetch --depth 1 https://github.com/nillerusr/source-engine.git "$revision"
+          git -C build/upstream checkout --detach FETCH_HEAD
+      - name: Compile tier0 and mathlib
+        run: |
+          scripts/build-engine-libs.sh build/upstream build/engine-core
+          xcrun lipo build/engine-core/libtier0.a -verify_arch arm64
+          xcrun lipo build/engine-core/libmathlib.a -verify_arch arm64
