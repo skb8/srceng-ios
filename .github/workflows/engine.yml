@@ -6,11 +6,13 @@ on:
       - ".github/workflows/engine.yml"
       - "Engine/Upstream/**"
       - "scripts/build-engine-libs.sh"
+      - "scripts/make-filesystem-fixture.py"
   pull_request:
     paths:
       - ".github/workflows/engine.yml"
       - "Engine/Upstream/**"
       - "scripts/build-engine-libs.sh"
+      - "scripts/make-filesystem-fixture.py"
   workflow_dispatch:
 
 permissions:
@@ -19,7 +21,13 @@ permissions:
 jobs:
   libraries:
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [iphoneos, iphonesimulator]
+    env:
+      SDK: ${{ matrix.sdk }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -32,7 +40,21 @@ jobs:
           git -C build/upstream checkout --detach FETCH_HEAD
       - name: Compile Source runtime and filesystem archives
         run: |
-          scripts/build-engine-libs.sh build/upstream build/engine-core
+          scripts/build-engine-libs.sh build/upstream build/engine-core "$SDK"
           for module in tier0 mathlib tier1 tier2 vstdlib vpklib filesystem_stdio appframework; do
             xcrun lipo "build/engine-core/lib$module.a" -verify_arch arm64
           done
+      - name: Mount a VPK with the Source filesystem on Simulator
+        if: matrix.sdk == 'iphonesimulator'
+        timeout-minutes: 10
+        run: |
+          sim="$(xcrun simctl list -j devices available | jq -er '
+            [.devices | to_entries | sort_by(.key) | .[]
+              | select(.key | startswith("com.apple.CoreSimulator.SimRuntime.iOS-"))
+              | .value[] | select(.name == "iPhone 17" and .isAvailable)]
+            | last | .udid')"
+          trap 'xcrun simctl shutdown "$sim" || true' EXIT
+          xcrun simctl bootstatus "$sim" -b
+          python3 scripts/make-filesystem-fixture.py build/filesystem-fixture/hl2
+          xcrun simctl spawn "$sim" "$PWD/build/engine-core/source-filesystem-probe" \
+            "$PWD/build/filesystem-fixture/hl2"

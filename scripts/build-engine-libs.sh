@@ -102,3 +102,9 @@ build_library filesystem_stdio filesystem -DFILESYSTEM_STDIO_EXPORTS=1 \
 
 build_library appframework appframework -DNO_STEAM=1 -- \
   AppSystemGroup public/filesystem_init.cpp posixapp
+
+"$cxx" -std=c++11 "${common_flags[@]}" "$repo/Engine/Upstream/FilesystemProbe.cpp" \
+  -Wl,-force_load,"$output/libfilesystem_stdio.a" \
+  "$output/libappframework.a" "$output/libvpklib.a" "$output/libtier2.a" \
+  "$output/libvstdlib.a" "$output/libmathlib.a" "$output/libtier1.a" "$output/libtier0.a" \
+  -framework CoreFoundation -liconv -lz -o "$output/source-filesystem-probe"
